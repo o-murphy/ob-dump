@@ -199,8 +199,16 @@ jobs:
           awk "/^## \[$VERSION\]/{found=1; next} /^## \[/{if(found) exit} /^\[.+\]:/{if(found) exit} found{print}" \
             dart/CHANGELOG.md > /tmp/release_notes.md
           if [ ! -s /tmp/release_notes.md ]; then
-            echo "No changelog entry found for $VERSION — add one to dart/CHANGELOG.md (and flutter/CHANGELOG.md) first"
-            exit 1
+            if [ "$IS_DRY_RUN" = "true" ]; then
+              # A dry run's whole point is trying a tag/version that isn't
+              # "real" yet — requiring a matching CHANGELOG.md entry for it
+              # would defeat that. Only a real release enforces this.
+              echo "::warning::No changelog entry found for $VERSION — fine for a dry run, required for a real release."
+              echo "_(dry run: no matching CHANGELOG.md entry for $VERSION)_" > /tmp/release_notes.md
+            else
+              echo "No changelog entry found for $VERSION — add one to dart/CHANGELOG.md (and flutter/CHANGELOG.md) first"
+              exit 1
+            fi
           fi
           cat /tmp/release_notes.md
 
