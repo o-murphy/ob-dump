@@ -1,0 +1,304 @@
+name: Release
+
+# Triggered by pushing a tag like v1.2.3 — that one tag drives everything:
+# the C++ core's ob_dump_version(), and both dart/ and flutter/ pubspec
+# versions (which must always match each other — see
+# .github/workflows/version-parity.yml and docs/BACKLOG.md item 18).
+#
+# Also runnable manually (workflow_dispatch) with a tag to *simulate*,
+# without needing a real tag to exist — useful to dry-run the whole
+# pipeline (build/test/package/changelog-extraction) before ever actually
+# tagging. dry_run defaults to true specifically so "Run workflow" in the
+# GitHub UI can't accidentally publish anything just by clicking the
+# default button.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to simulate, e.g. v0.1.0 (doesn't need to actually exist)"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run: build/test/package/validate everything, but skip the version-bump commit, GitHub release, and pub.dev publish"
+        required: false
+        type: boolean
+        default: true
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  IS_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+
+jobs:
+  # ── 1 + 5 (cpp half): build the CLI/shared-lib for every platform we
+  # claim to support, run its test suite, package + upload artifacts. ──────
+  build-cpp:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # All native builds — no cross-compilation/QEMU involved. Runner
+          # labels confirmed current via actions/runner-images' own README
+          # (ubuntu-24.04-arm and windows-11-arm are GA, not preview).
+          - { os: ubuntu-latest,    name: linux-x64 }
+          - { os: ubuntu-24.04-arm, name: linux-arm64 }
+          - { os: windows-latest,   name: windows-x64 }
+          - { os: windows-11-arm,   name: windows-arm64 }
+          # Universal binary (both archs in one file via Xcode/clang +
+          # lipo) rather than two separate macOS legs — same pattern
+          # dart_lmdb2's own CMakeLists.txt already uses. Quoted so the
+          # embedded ";" survives substitution into the shell command below
+          # instead of bash reading it as a command separator.
+          - { os: macos-latest,     name: macos-universal, cmake_extra: '-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"' }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure
+        shell: bash
+        run: |
+          VERSION="${RELEASE_TAG#v}"  # tag is "v1.2.3", pubspecs/OB_DUMP_VERSION want bare "1.2.3"
+          cmake -B build -DOB_DUMP_VERSION="$VERSION" ${{ matrix.cmake_extra }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      # windows-11-arm/ubuntu-24.04-arm run the tests natively (real ARM64
+      # hosts) — no emulation, no skipped tests, unlike a cross-compiled
+      # binary would need.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -C Release
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ -f build/Release/ob_dump.exe ]; then
+            cp build/Release/ob_dump.exe build/Release/ob_dump.dll build/Release/ob_dump.lib dist/
+          elif [ -f build/ob_dump.exe ]; then
+            cp build/ob_dump.exe build/ob_dump.dll build/ob_dump.lib dist/
+          else
+            cp build/ob_dump dist/
+            cp build/libob_dump.* dist/
+          fi
+          cp include/ob_dump.h dist/
+          tar -czf ob-dump-${{ matrix.name }}.tar.gz -C dist .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ob-dump-${{ matrix.name }}
+          path: ob-dump-${{ matrix.name }}.tar.gz
+
+  # ── 3 + 5 (dart half) ──────────────────────────────────────────────────
+  test-dart:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dart
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dart-lang/setup-dart@v1
+      - run: dart pub get
+      - run: dart analyze
+      - run: dart test
+
+  # ── 4 + 5 (flutter half) ───────────────────────────────────────────────
+  test-flutter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze
+
+  # ── 2: bump both pubspecs to the tag's version, commit + push to main ──
+  bump-versions:
+    needs: [build-cpp, test-dart, test-flutter]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Extract version and detect pre-release
+        id: meta
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          if [[ "$RELEASE_TAG" =~ (alpha|beta|rc) ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Bump dart/pubspec.yaml and flutter/pubspec.yaml (lockstep)
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          sed -i "s/^version: .*/version: $VERSION/" dart/pubspec.yaml
+          sed -i "s/^version: .*/version: $VERSION/" flutter/pubspec.yaml
+          grep '^version:' dart/pubspec.yaml flutter/pubspec.yaml
+
+      # Skipped on a dry run — nothing gets committed/pushed to main, so a
+      # manual "Run workflow" dry run never mutates the real branch.
+      - name: Commit and push version bump
+        if: env.IS_DRY_RUN != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dart/pubspec.yaml flutter/pubspec.yaml
+          git diff --cached --quiet || git commit -m "chore: bump version to ${{ steps.meta.outputs.version }}"
+          git push origin main
+
+  # ── 6: create the GitHub release, attaching every platform's archive ───
+  create-release:
+    needs: bump-versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # On a real run this is post-bump (bump-versions pushed to main just
+      # above). On a dry run bump-versions skipped its push, so this is
+      # just whatever main currently is — fine, this job's real purpose in
+      # a dry run is validating the changelog-extraction + packaging glue,
+      # not the actual git state.
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ob-dump-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Extract release notes from dart/CHANGELOG.md
+        run: |
+          VERSION="${{ needs.bump-versions.outputs.version }}"
+          # Also stops at a markdown link-reference line (e.g. "[0.1.0]: ..."),
+          # not just the next "## [" heading — otherwise the CHANGELOG's own
+          # footer link references leak into the release body when this is
+          # the most recent version section (nothing else bounds it).
+          awk "/^## \[$VERSION\]/{found=1; next} /^## \[/{if(found) exit} /^\[.+\]:/{if(found) exit} found{print}" \
+            dart/CHANGELOG.md > /tmp/release_notes.md
+          if [ ! -s /tmp/release_notes.md ]; then
+            echo "No changelog entry found for $VERSION — add one to dart/CHANGELOG.md (and flutter/CHANGELOG.md) first"
+            exit 1
+          fi
+          cat /tmp/release_notes.md
+
+      - name: Create GitHub Release
+        if: env.IS_DRY_RUN != 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          body_path: /tmp/release_notes.md
+          prerelease: ${{ needs.bump-versions.outputs.prerelease }}
+          files: artifacts/*.tar.gz
+
+  # ── 7: publish ob_dump_reader to pub.dev ────────────────────────────────
+  publish-dart:
+    needs: [bump-versions, create-release]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # pub.dev OIDC trusted publisher — configure this
+                       # package for trusted publishing on pub.dev first.
+    defaults:
+      run:
+        working-directory: dart
+    steps:
+      # `main` already has bump-versions' commit; the tag itself still
+      # points at the pre-bump commit, so we can't just use github.ref.
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - uses: dart-lang/setup-dart@v1
+      - run: dart pub get
+      - run: dart pub publish --dry-run
+      - name: Publish to pub.dev
+        if: env.IS_DRY_RUN != 'true'
+        run: dart pub publish --force
+
+  # ── 8: publish ob_dump_reader_flutter — gated behind manual approval to
+  # give pub.dev's index time to catch up with the dart/ publish above
+  # before this package's dependency on it tries to resolve. ─────────────
+  publish-flutter:
+    # bump-versions listed explicitly (not just publish-dart) because
+    # needs.<job>.outputs is only accessible for *direct* dependencies —
+    # bump-versions is otherwise only a transitive one via publish-dart,
+    # and this job needs its version output below.
+    needs: [publish-dart, bump-versions]
+    runs-on: ubuntu-latest
+    environment: pub-publish-flutter  # requires a "required reviewers"
+                                       # protection rule configured in this
+                                       # repo's Settings > Environments —
+                                       # not something a workflow file can
+                                       # set up by itself. Gates dry runs
+                                       # too, on purpose: it's part of the
+                                       # pipeline shape being validated.
+    permissions:
+      id-token: write  # pub.dev OIDC trusted publisher
+    defaults:
+      run:
+        working-directory: flutter
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      # Skipped entirely on a dry run: this swaps in the version publish-dart
+      # just published for real — on a dry run nothing was actually
+      # published, so pub.dev has no such version to resolve and this would
+      # just fail for an uninteresting reason. A dry run's job here is
+      # confirming the job/environment-gate triggers at all, not this step.
+      - name: "Make pubspec.yaml publishable (path dep + publish_to: none)"
+        if: env.IS_DRY_RUN != 'true'
+        run: |
+          VERSION="${{ needs.bump-versions.outputs.version }}"
+          flutter pub remove ob_dump_reader
+          flutter pub add "ob_dump_reader@^$VERSION"
+          # `publish_to: none` blocks `pub publish` outright, same as the
+          # path dep — `pub remove/add` only manage dependencies, not this
+          # top-level field, so it needs its own edit.
+          sed -i '/^publish_to: none$/d' pubspec.yaml
+          # Neither edit is committed — dart/pubspec.yaml in the repo keeps
+          # `publish_to: none` and the path dep for local dev; this rewrite
+          # only exists in this ephemeral checkout, purely so `pub publish`
+          # sees a publishable pubspec.
+          grep -A1 '^  ob_dump_reader' pubspec.yaml
+          grep -q '^publish_to:' pubspec.yaml && echo "ERROR: publish_to still present" && exit 1 || true
+
+      - name: (dry run) skip dependency swap / publish
+        if: env.IS_DRY_RUN == 'true'
+        run: |
+          echo "Dry run: nothing was actually published by publish-dart, so there is no real pub.dev version to swap in and validate here."
+
+      - name: flutter pub get
+        if: env.IS_DRY_RUN != 'true'
+        run: flutter pub get
+      - name: flutter analyze
+        if: env.IS_DRY_RUN != 'true'
+        run: flutter analyze
+      - name: flutter pub publish --dry-run
+        if: env.IS_DRY_RUN != 'true'
+        run: flutter pub publish --dry-run
+      - name: Publish to pub.dev
+        if: env.IS_DRY_RUN != 'true'
+        run: flutter pub publish --force

@@ -8,18 +8,22 @@ description: >
   ob_dump_reader directly from plain Dart (CLI scripts, server, tests).
 version: 0.1.0-dev
 homepage: https://github.com/o-murphy/ob-dump
+# TODO(release): remove this line together with the path dep below —
+# `flutter analyze` actually *fails* (exit 1, not just a warning; verified
+# via CI, not assumed) on "path dependencies aren't publishable" without it.
+# See docs/BACKLOG.md phased-plan item 17/18 for the release process.
+publish_to: none
 environment:
   sdk: '>=3.5.0 <4.0.0'
   flutter: '>=3.29.0'
 dependencies:
   flutter:
     sdk: flutter
-  # TODO(release): path dep only works pre-publish (also why `flutter
-  # analyze` reports one "path dependencies aren't publishable" warning).
-  # Before actually publishing this package, replace with a real version
-  # constraint on ob_dump_reader from pub.dev, e.g. `^<matching version>`
-  # — see docs/BACKLOG.md phased-plan item 17/18 for the release process
-  # (both packages' versions must stay in lockstep; CI enforces this).
+  # TODO(release): path dep only works pre-publish. Before actually
+  # publishing this package, replace with a real version constraint on
+  # ob_dump_reader from pub.dev, e.g. `^<matching version>` — see
+  # docs/BACKLOG.md phased-plan item 17/18 for the release process (both
+  # packages' versions must stay in lockstep; CI enforces this).
   ob_dump_reader:
     path: ../dart
   flutter_lmdb2: ^0.9.5

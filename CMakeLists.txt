@@ -101,6 +101,15 @@ add_executable(ob_dump_cli cli/main.c)
 target_link_libraries(ob_dump_cli PRIVATE ob_dump_core)
 set_target_properties(ob_dump_cli PROPERTIES
   OUTPUT_NAME ob_dump
+  # On Windows, MSVC/CMake's Visual Studio generator gives even a plain
+  # .exe an /IMPLIB import-lib output slot — normally harmless, but here it
+  # collides with the ob_dump *shared library* target's own real
+  # ob_dump.lib/.exp in the same output directory (both named "ob_dump" via
+  # OUTPUT_NAME; Linux/macOS never hit this since "lib"+".so"/".dylib"
+  # already makes the filenames distinct). Redirect just that incidental
+  # archive output elsewhere — the .exe itself still lands at the same
+  # documented path (build/ob_dump / build/Release/ob_dump.exe).
+  ARCHIVE_OUTPUT_NAME ob_dump_cli_implib
   LINKER_LANGUAGE CXX
 )
 

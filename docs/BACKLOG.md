@@ -561,3 +561,68 @@ decoder's output exactly.
     (3) publish `ob_dump_reader` to pub.dev first, (4) update `flutter/`'s
     path dep to that published version, (5) publish
     `ob_dump_reader_flutter`, (6) tag both.
+19. **`.github/workflows/release.yml`** — done: a single `v*` tag push now
+    drives the entire release (based on this project's own prior
+    `a7p-dart` release workflow pattern, adapted for a monorepo with a C++
+    core plus two lockstep Dart packages instead of one plain Dart
+    package). Jobs, in dependency order:
+    - `build-cpp` — 5-leg **native** matrix (no cross-compilation/QEMU):
+      `ubuntu-latest`(x64)/`ubuntu-24.04-arm`(arm64)/
+      `windows-latest`(x64)/`windows-11-arm`(arm64) — all confirmed GA (not
+      preview) via `actions/runner-images`' own README, not guessed — plus
+      a `macos-latest` **universal** binary (`CMAKE_OSX_ARCHITECTURES=
+      "arm64;x86_64"`, same pattern `dart_lmdb2`'s own CMakeLists.txt
+      already uses) instead of two separate macOS legs. Builds, tests
+      (natively — real ARM64 hosts, no emulation), packages the CLI +
+      shared lib + header into `ob-dump-<platform>.tar.gz`, uploads as a
+      build artifact.
+    - `test-dart` / `test-flutter` — same checks as the regular `dart.yml`/
+      `flutter.yml` CI, run again here as a release gate.
+    - `bump-versions` (needs all three above) — strips the tag's `v`
+      prefix, writes that version into *both* `dart/pubspec.yaml` and
+      `flutter/pubspec.yaml` (lockstep, one commit), pushes to `main`. Same
+      "tag points at the pre-bump commit, later jobs must checkout `main`
+      by name, not the default ref" pattern as the `a7p-dart` reference.
+    - `create-release` — downloads every `build-cpp` leg's archive,
+      extracts that version's section from `dart/CHANGELOG.md` for the
+      release body (found a real bug while testing this locally before
+      trusting it in CI: the original awk pattern only stopped at the next
+      `## [` heading, so on the *most recent* version — nothing bounds it
+      from below — the CHANGELOG's own trailing `[x.y.z]: https://...`
+      link-reference lines leaked into the extracted notes; fixed by also
+      stopping at a line matching `^\[.+\]:`), creates the GitHub Release
+      with all platform archives attached.
+    - `publish-dart` — checks out `main` (post-bump), `dart pub publish`.
+      Uses pub.dev's OIDC trusted-publishing (`permissions: id-token:
+      write`), same as this project's own `a7p-dart` release workflow —
+      **requires the user to configure trusted publishing for
+      `ob_dump_reader` on pub.dev first**, not something this file can set
+      up by itself.
+    - `publish-flutter` (needs `publish-dart`) — **gated behind a GitHub
+      Environment (`pub-publish-flutter`) requiring manual approval**,
+      specifically to compensate for pub.dev's indexing lag: this job's
+      pubspec depends on the `ob_dump_reader` version `publish-dart` just
+      published, and resolving that immediately could hit pub.dev before
+      its index has caught up. **Requires the user to add a "required
+      reviewers" protection rule to that environment in this repo's
+      Settings > Environments** — a workflow file cannot configure that
+      itself. Before installing dependencies, ephemerally rewrites (never
+      committed — `dart/pubspec.yaml`'s path dep stays as-is in the repo
+      for local dev) the checkout's own `flutter/pubspec.yaml` dependency
+      from the local `path: ../dart` to the just-published version, using
+      `flutter pub remove ob_dump_reader && flutter pub add
+      "ob_dump_reader@^$VERSION"` — proper pub tooling editing the
+      pubspec structurally, not a text-substitution `sed`, per explicit
+      request. (Caught the correct flag syntax by checking `flutter pub
+      add --help` rather than assuming: it's `package@constraint`, not
+      `package:constraint`.)
+
+    **Two more manual prerequisites**, beyond the environment/trusted-
+    publishing setup above: a `## [x.y.z]` section must already exist in
+    `dart/CHANGELOG.md` before pushing the tag (`create-release` fails
+    loudly, before creating anything, if it doesn't — verified locally by
+    simulating both the "entry exists" and "entry missing" cases against a
+    scratch copy of the real CHANGELOG); and this workflow, like items 15
+    and 17, has **not actually been run** — no tag has been pushed yet, so
+    none of the runner-availability assumptions or the cross-job checkout
+    handoff have been confirmed against a real GitHub Actions execution.
