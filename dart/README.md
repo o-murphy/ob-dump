@@ -12,6 +12,14 @@ C++ core either. This is a deliberate toolkit split, not a missing feature:
 see the parent project's [`docs/BACKLOG.md`](../docs/BACKLOG.md#schema-export---schema-and---fbs)
 for the reasoning.
 
+**Using this from a Flutter app?** Depend on
+[`../flutter`](../flutter) (`ob_dump_reader_flutter`) instead of this
+package directly — same API, but it pulls in `flutter_lmdb2` so Flutter's
+plugin tooling bundles the native LMDB library into your Android/iOS/macOS
+app. This package's own `dart_lmdb2` dependency only fetches a binary into
+your pub cache, which works for a `dart run` script but isn't part of a
+shipped mobile app.
+
 ## Workflow
 
 ```sh

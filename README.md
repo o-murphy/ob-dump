@@ -104,6 +104,14 @@ if (rc != 0) fprintf(stderr, "error: %s\n", ob_dump_last_error());
 directly from Dart — deliberately *not* an FFI binding to this C++ core. See
 its own README and `docs/BACKLOG.md` (phased-plan item 10) for why.
 
+**Using it from a Flutter app** (not a plain Dart script/CLI)? Depend on
+[`flutter/`](flutter) (`ob_dump_reader_flutter`) instead — same API,
+re-exported unchanged, but pulls in `flutter_lmdb2` so Flutter's own plugin
+tooling bundles the native LMDB library into your Android/iOS/macOS app
+properly (`ob_dump_reader`'s own `dart_lmdb2` dependency only fetches a
+binary into your pub cache, which isn't part of a shipped mobile app). See
+`flutter/README.md` and `docs/BACKLOG.md` (phased-plan item 17).
+
 ## Building your own reader in another language
 
 [`dart/`](dart) (see above) is a worked example of a pattern that doesn't
@@ -143,11 +151,14 @@ exists for your language (common — LMDB is a popular embedded store):
 Reads all 20 non-`Flex` ObjectBox `PropertyType` codes: every fixed-width
 scalar (`Bool`, `Byte`, `Short`, `Char`, `Int`, `Long`, `Float`, `Double`,
 `Date`, `ToOne` relations, `DateNano`), `String`, and every vector form of
-the above. `ToMany` relations and `Flex` properties are not implemented —
-they're structurally different (a separate LMDB structure and a nested
-FlexBuffers blob, respectively), not just another field type. See
-`docs/BACKLOG.md` for the full list and the reasoning behind each design
-choice.
+the above — with correct signedness (the `UNSIGNED` property flag is
+honored, not just the type code). `ToMany` relations and `Flex` properties
+are not implemented — they're structurally different (a separate LMDB
+structure and a nested FlexBuffers blob, respectively), not just another
+field type. The `ExternalPropertyType` annotation layer (`Uuid`, `Int128`,
+etc.) is partially handled: `Uuid`/`Int128`/`Decimal128`/`Bson` decode as
+hex/UUID strings instead of raw byte arrays. See `docs/BACKLOG.md` for the
+full list and the reasoning behind each design choice.
 
 ## License
 

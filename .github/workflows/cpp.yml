@@ -23,3 +23,24 @@ jobs:
       # generator.
       - name: Test
         run: ctest --test-dir build --output-on-failure -C Release
+
+      # Single-config generators (Linux/macOS) put output directly under
+      # build/; Windows' multi-config Visual Studio generator nests it
+      # under build/Release/ — cover both without an OS-specific path.
+      # if-no-files-found: warn since not every glob matches on every OS
+      # (e.g. no .dll/.lib outside Windows).
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ob-dump-${{ matrix.os }}
+          if-no-files-found: warn
+          path: |
+            include/ob_dump.h
+            build/ob_dump
+            build/ob_dump.exe
+            build/libob_dump.*
+            build/ob_dump.dll
+            build/ob_dump.lib
+            build/Release/ob_dump.exe
+            build/Release/ob_dump.dll
+            build/Release/ob_dump.lib

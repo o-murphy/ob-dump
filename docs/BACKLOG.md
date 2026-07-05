@@ -132,17 +132,24 @@ omitted, not defaulted), a present-but-empty vector (must be `[]`, not
 omitted), an `Unknown`/`Flex` property (must be skipped, not fail the whole
 record), and a truncated buffer (must throw, never read out of bounds).
 
-**Known gap even within these 20 types:** ObjectBox tracks signedness via a
-separate `flags` bitmask on the property (`UNSIGNED = 8192`,
+**`UNSIGNED` flag — fixed.** ObjectBox tracks signedness via a separate
+`flags` bitmask on the property (`UNSIGNED = 8192`,
 `lib/src/modelinfo/enums.dart`), not via a distinct `PropertyType` code —
-e.g. an unsigned `Long` and a signed `Long` are both type code 6. Since
-`Schema::parse` doesn't read `flags` yet, every integer scalar/vector here
-is decoded with its natural **signed** interpretation (matching the common
-case). A genuinely-unsigned field large enough to flip sign under a signed
-read would print incorrectly. Not fixed now because it's an orthogonal
-concern to "which `PropertyType` codes are implemented" (the thing this
-round of work was scoped to) and no real schema encountered so far uses
-`UNSIGNED` — tracked here rather than silently ignored.
+e.g. an unsigned `Long` and a signed `Long` are both type code 6.
+`Schema::parse` now reads `flags` (`PropertyDef::isUnsigned`), and
+`fb_decode.cpp` dispatches to the unsigned template instantiation
+(`uint8_t`/`uint16_t`/`uint32_t`/`uint64_t`) for `Byte`/`Short`/`Int`/
+`Long`(+`Date`/`Relation`/`DateNano`) and their vector forms when set —
+`nlohmann::json` serializes `uint64_t` exactly, so a value above
+`INT64_MAX` no longer flips sign. `--fbs` generation picks the matching
+unsigned `.fbs` keyword (`ubyte`/`ushort`/`uint`/`ulong`) too, so a
+`flatc`-generated reader in any language agrees on signedness, not just
+width. Covered by `tests/fb_decode_test.cpp`
+(`testUnsignedIntegersDecodeCorrectly`) and `tests/fbs_gen_test.cpp`. Note:
+no real schema encountered so far (including ebalistyka's) actually sets
+this flag — checked by scanning ebalistyka's real `objectbox-model.json`
+for any `flags` value with the `8192` bit set (none found) — so this is a
+correctness fix for generality, not something that changed any real output.
 
 ## Schema export: `--schema` and `--fbs`
 
@@ -220,12 +227,46 @@ decoder's output exactly.
   another `switch` branch). Deliberately excluded from the "cover every
   remaining type" pass — different enough in kind to warrant its own scoped
   effort rather than being bundled in.
-- The newer `ExternalPropertyType` annotation layer (`int128`, `uuid`,
-  `decimal128`, `flexMap`, `flexVector`, `json`, `bson`, `javaScript`) that
-  can sit on top of a base property type.
-- The `UNSIGNED` property flag (see "Known gap" above).
-- Big-endian host support (FlatBuffers is always little-endian on disk;
-  reading on a BE host needs an explicit byteswap we haven't added).
+- **`ExternalPropertyType` — partially implemented.** This is a semantic
+  annotation *on top of* a base `PropertyType` (the `"externalType"` field
+  on a property in model.json, numeric codes from the official `objectbox`
+  Dart package, `lib/src/modelinfo/enums.dart`, class
+  `OBXExternalPropertyType` — starting at 100 specifically so they never
+  collide with `PropertyType`'s own codes). The base type still determines
+  the wire encoding; `externalType` only changes what the bytes *mean*.
+  Handled: `Uuid`(102)/`Int128`(100)/`Decimal128`(103)/`Bson`(110) — all
+  physically a `ByteVector` — now decode as a hex string (`Uuid`
+  additionally grouped into canonical `8-4-4-4-12` form) instead of a JSON
+  array of small integers (`fb_decode.cpp`'s `decodeByteVectorAsBlobString`;
+  `--fbs` generation adds a `// external type: X` comment, since the `.fbs`
+  field type itself doesn't change). `Json`(109)/`JavaScript`(111)/
+  `JsonToNative`(112) need no extra work — their base type is `String`,
+  already decoded correctly; the only possible improvement there is
+  cosmetic (parsing the string content as nested JSON instead of leaving it
+  as an escaped JSON string), not attempted. **Not implemented:**
+  `FlexMap`(107)/`FlexVector`(108) (base type `Flex`, already out of scope
+  — see above), `Int128Vector`(116)/`UuidVector`(118) (would need a
+  vector-of-byte-vectors wire structure, not one of our current vector
+  categories), and the Mongo-specific codes (`MongoId` and friends, rare,
+  not researched). Like `UNSIGNED`, no real schema encountered so far
+  (including ebalistyka's) actually sets `externalType` — checked the same
+  way, found none.
+- Big-endian host support — **already correct, not actually a gap** (this
+  entry previously claimed otherwise; corrected after checking). FlatBuffers'
+  own `ReadScalar<T>`/`EndianScalar` (`flatbuffers/base.h`) already
+  byte-swaps on a big-endian host at every scalar/vtable/vector read —
+  that's a core, documented FlatBuffers design guarantee, and everything we
+  read goes through it (`Table::GetField`, `Vector<T>::Get`, `GetRoot`,
+  ...). The only hand-rolled, non-flatbuffers byte read in this codebase is
+  `lmdb_reader.cpp`'s `readUint32BE` for the LMDB key's `object_id` — built
+  from individual `uint8_t` shifts, not a memory reinterpret-cast, so it's
+  endian-neutral by construction regardless. Grepped this project's own
+  code for any other raw `reinterpret_cast`/manual multi-byte read that
+  could bypass `EndianScalar`: none found. Caveat: this is verified by
+  source inspection of the exact mechanism (FlatBuffers' own endian
+  handling, a stated design goal of the format) and reasoning about our own
+  code, not by actually running on real big-endian hardware — none was
+  available to test against.
 - Windows/macOS build coverage: now CI-checked (`.github/workflows/cpp.yml`,
   `.github/workflows/dart.yml`, a 3-OS matrix each), but *only* CI-checked —
   no development or manual verification has happened on either platform,
@@ -414,7 +455,14 @@ decoder's output exactly.
     file is personal user data, not something to commit as a fixture.
     Fixed one real portability bug found while wiring this up (see
     "Explicitly out of scope" above: `lmdb_reader.cpp`'s POSIX
-    `stat()`/`S_ISREG` → `std::filesystem::is_regular_file`). Important
+    `stat()`/`S_ISREG` → `std::filesystem::is_regular_file`).
+    `cpp.yml` also uploads the built CLI binary + shared library + public
+    header as a per-OS `actions/upload-artifact` (`ob-dump-<os>`) — glob
+    patterns cover both the single-config layout (Linux/macOS, `build/`
+    directly) and Windows' multi-config Visual Studio generator
+    (`build/Release/`) without an OS-specific step; verified the Linux glob
+    against this project's own local build output, not able to verify the
+    Windows/macOS paths the same way (see caveat below). Important
     caveat: these workflows have not actually been run yet — this repo has
     no commits pushed to a remote yet (local commits are pending on the
     user's own GPG signing setup), so "the C++/Dart core builds and its
@@ -423,3 +471,58 @@ decoder's output exactly.
     lists Windows/macOS support in its own README) but **not yet
     empirically confirmed** on those two platforms — only Linux has
     actually been built and tested so far. Confirm once pushed.
+16. **`UNSIGNED` flag + partial `ExternalPropertyType` + big-endian doc
+    correction** — done, see "Scope" and "Explicitly out of scope" above
+    for full detail. Summary: integers now decode with correct signedness;
+    `Uuid`/`Int128`/`Decimal128`/`Bson` `ByteVector`s decode as hex/UUID
+    strings instead of int arrays; `Json`/`JavaScript` needed no change
+    (already `String`); big-endian support turned out to already be
+    correct (FlatBuffers' own `EndianScalar` handles it), so that entry was
+    a documentation correction, not a code fix. New tests in
+    `fb_decode_test.cpp`/`schema_json_test.cpp`/`fbs_gen_test.cpp`; full
+    suite + real-data regression re-verified (same 4 known diffs as every
+    prior verification, zero new ones).
+17. **`flutter/` package (`ob_dump_reader_flutter`)** — done. `dart/`
+    (`ob_dump_reader`) depends on `dart_lmdb2`, whose native library is
+    fetched via `dart run dart_lmdb2:fetch_native` into the *pub cache* —
+    fine for a `dart run` CLI script, but not part of a compiled
+    Android/iOS/macOS app bundle a real user installs. `dart_lmdb2`'s own
+    README points at a separate package, `flutter_lmdb2`, for that case — a
+    genuine Flutter plugin (Android Gradle / iOS podspec / macOS) that
+    bundles the native library properly and, per its own `lib/lmdb.dart`
+    (`export 'package:dart_lmdb2/lmdb.dart';` — checked by downloading and
+    inspecting the actual published package, not assumed), re-exports
+    `dart_lmdb2`'s identical Dart API.
+
+    Rather than duplicating `readObjectBoxRecords`'s logic into a second
+    package that imports `flutter_lmdb2` instead of `dart_lmdb2`, `flutter/`
+    is a near-empty wrapper: its `lib/ob_dump_reader_flutter.dart` is just
+    `export 'package:ob_dump_reader/ob_dump_reader.dart';`, and its
+    `pubspec.yaml` depends on both `ob_dump_reader` (path dep during
+    development) and `flutter_lmdb2`. No source file here imports
+    `flutter_lmdb2` directly — it only needs to be present in the resolved
+    dependency graph, because Flutter's plugin-discovery tooling scans the
+    *whole* graph (not just an app's direct dependencies) for packages
+    declaring `flutter: plugin:` and wires up their native bundling
+    regardless of depth.
+
+    **Verified empirically, not just reasoned through:** created a scratch
+    `flutter create` app, added `ob_dump_reader_flutter` as its only new
+    dependency (no direct mention of `flutter_lmdb2` anywhere in the app's
+    own code or pubspec), ran `flutter pub get`, and confirmed
+    `.flutter-plugins-dependencies` lists `flutter_lmdb2` under `android`/
+    `ios`/`macos` with `native_build: true`, and the generated
+    `GeneratedPluginRegistrant.java` actually instantiates
+    `com.grammatek.flutter_lmdb2.FlutterLmdb2Plugin()`. Confirms the
+    transitive-plugin-discovery mechanism this design relies on actually
+    works, not just that it should in theory.
+
+    Known loose end: `flutter analyze` reports one expected warning
+    (`Publishable packages can't have 'path' dependencies`) because
+    `ob_dump_reader` isn't published to pub.dev yet, so `flutter/`'s
+    dependency on it is a local `path:` — harmless during development
+    (doesn't fail CI, `flutter analyze` exits 0 on warnings), needs
+    switching to a real version constraint once `ob_dump_reader` is
+    actually published. `.github/workflows/flutter.yml` added (3-OS
+    matrix, `flutter pub get` + `flutter analyze`) — same "not run on a
+    real remote yet" caveat as item 15 applies here too.

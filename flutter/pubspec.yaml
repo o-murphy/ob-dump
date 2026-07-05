@@ -1,0 +1,19 @@
+name: ob_dump_reader_flutter
+description: >
+  Flutter-ready variant of ob_dump_reader — identical API, but depends on
+  flutter_lmdb2 instead of dart_lmdb2 so the native LMDB library is properly
+  bundled by Flutter's own plugin tooling on Android/iOS/macOS (dart_lmdb2's
+  own fetch_native download lands in the pub cache, which isn't part of a
+  shipped app bundle on mobile). Use this from a Flutter app; use
+  ob_dump_reader directly from plain Dart (CLI scripts, server, tests).
+version: 0.1.0
+homepage: https://github.com/o-murphy/ob-dump
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+  flutter: '>=3.29.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  ob_dump_reader:
+    path: ../dart
+  flutter_lmdb2: ^0.9.5
