@@ -8,21 +8,44 @@
 
 namespace ob_dump_internal {
 
-// ObjectBox PropertyType codes actually observed in a real model.json.
-// See docs/BACKLOG.md "Scope" for what's implemented vs. explicitly deferred.
+// Full ObjectBox PropertyType enum, codes taken from the authoritative
+// source (official `objectbox` Dart package,
+// lib/src/modelinfo/enums.dart) — not guessed. `Flex` is intentionally
+// listed but not decoded (see docs/BACKLOG.md "Explicitly out of scope":
+// it's a nested FlexBuffers blob, a different encoding entirely, deferred
+// on purpose). `ToMany` relations aren't in this enum at all — they live in
+// a separate LMDB relation-index structure, not a table field.
 enum class PropertyType : int {
-    Bool          = 1,
-    Long          = 6,  // int64. NOT the same code as ObjectBox's dedicated
-                        // `Date` type (10, also int64 on the wire) — that
-                        // type isn't used anywhere in ebalistyka's current
-                        // schema and isn't implemented here; see
-                        // docs/BACKLOG.md "Explicitly out of scope".
-    Double        = 8,
-    String        = 9,
-    Relation      = 11, // ToOne, stored as int64 fk
-    DoubleVector  = 29,
-    StringVector  = 30,
-    Unknown       = -1,
+    Bool           = 1,
+    Byte           = 2,  // int8
+    Short          = 3,  // int16
+    Char           = 4,  // 16-bit code unit; decoded as a plain integer, not
+                         // a JSON string — it's not guaranteed to be a valid
+                         // standalone Unicode scalar value (could be half of
+                         // a UTF-16 surrogate pair).
+    Int            = 5,  // int32
+    Long           = 6,  // int64. NOT the same code as `Date` (10) or
+                         // `DateNano` (12) — distinct PropertyType codes
+                         // that happen to share the int64 wire format.
+    Float          = 7,  // 32-bit float
+    Double         = 8,
+    String         = 9,
+    Date           = 10, // int64 ms-since-epoch
+    Relation       = 11, // ToOne, stored as int64 fk
+    DateNano       = 12, // int64 ns-since-epoch
+    Flex           = 13, // NOT decoded — see docs/BACKLOG.md
+    BoolVector     = 22,
+    ByteVector     = 23,
+    ShortVector    = 24,
+    CharVector     = 25,
+    IntVector      = 26,
+    LongVector     = 27,
+    FloatVector    = 28,
+    DoubleVector   = 29,
+    StringVector   = 30,
+    DateVector     = 31,
+    DateNanoVector = 32,
+    Unknown        = -1,
 };
 
 struct PropertyDef {

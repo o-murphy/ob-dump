@@ -87,34 +87,66 @@ ob_dump <base>.mdb objectbox-model.json [-o dump.json]
 
 ## Scope — what v1 reads
 
-Property types implemented (matches everything actually observed in
-ebalistyka's real schema — confirmed via a scan of every entity in
-`objectbox-model.json`, only these 7 types appear):
+All 20 non-Flex `PropertyType` codes ObjectBox defines are implemented (full
+list from the official `objectbox` Dart package, `lib/src/modelinfo/enums.dart`
+— the authoritative source, not guessed):
 
-- `bool` (1), `int64`/`Date` (6), `double` (8), `string` (9),
-  `relation`/ToOne (11, stored as int64 fk), `Float64Vector` (29), `StringVector` (30)
+- Scalars: `Bool`(1), `Byte`(2), `Short`(3), `Char`(4), `Int`(5), `Long`(6),
+  `Float`(7), `Double`(8), `String`(9), `Date`(10), `Relation`/ToOne(11,
+  int64 fk), `DateNano`(12)
+- Vectors: `BoolVector`(22), `ByteVector`(23), `ShortVector`(24),
+  `CharVector`(25), `IntVector`(26), `LongVector`(27), `FloatVector`(28),
+  `DoubleVector`(29), `StringVector`(30), `DateVector`(31),
+  `DateNanoVector`(32)
 
-(`fb_decode.cpp` handles this with 6 `switch` branches, not 7 — `Long` and
-`Relation` share one branch, since both are a plain `int64` on the wire.)
+`fb_decode.cpp` implements this with two templates (`decodeScalar<T>`,
+`decodeNumericVector<T>`) instead of ~20 near-duplicate functions — `Bool`/
+`BoolVector` stay separate since their JSON output needs an actual
+`true`/`false`, not a wire `0`/`1`; `String`/`StringVector` stay separate
+since they're offset/pointer-based, not fixed-width scalars.
+
+`Char` is decoded as a plain JSON integer (the underlying UTF-16 code unit),
+not a JSON string — a lone `Char` isn't guaranteed to be a valid standalone
+Unicode scalar value (it could be one half of a surrogate pair), so turning
+it into a UTF-8 string would risk producing invalid output for exactly the
+inputs where it matters most.
+
+Covered by `tests/fb_decode_test.cpp`, which builds real FlatBuffers tables
+with `flatbuffers::FlatBufferBuilder`'s low-level `AddElement`/`AddOffset`
+API (the same primitives ObjectBox itself uses) rather than relying only on
+real app data, so every type has a deterministic, from-scratch test — plus
+cases for: a schema property never written to a given record (must be
+omitted, not defaulted), a present-but-empty vector (must be `[]`, not
+omitted), an `Unknown`/`Flex` property (must be skipped, not fail the whole
+record), and a truncated buffer (must throw, never read out of bounds).
+
+**Known gap even within these 20 types:** ObjectBox tracks signedness via a
+separate `flags` bitmask on the property (`UNSIGNED = 8192`,
+`lib/src/modelinfo/enums.dart`), not via a distinct `PropertyType` code —
+e.g. an unsigned `Long` and a signed `Long` are both type code 6. Since
+`Schema::parse` doesn't read `flags` yet, every integer scalar/vector here
+is decoded with its natural **signed** interpretation (matching the common
+case). A genuinely-unsigned field large enough to flip sign under a signed
+read would print incorrectly. Not fixed now because it's an orthogonal
+concern to "which `PropertyType` codes are implemented" (the thing this
+round of work was scoped to) and no real schema encountered so far uses
+`UNSIGNED` — tracked here rather than silently ignored.
 
 ## Explicitly out of scope for v1 (tracked here, not silently ignored)
 
 - **`ToMany` relations** — stored in a *separate* LMDB relation-index structure
   (different key-type byte, not part of the object's FlatBuffers table at
   all). Needs its own walk once we have a real schema that uses one.
-- **`Flex` properties** — dynamic property stored as an embedded FlexBuffers
-  blob (a different encoding from the table-based FlatBuffers we decode).
-- Remaining `PropertyType` codes ObjectBox defines but that don't appear in
-  ebalistyka's schema (full list from the official `objectbox` Dart package,
-  `lib/src/modelinfo/enums.dart` — the authoritative source, not guessed):
-  scalars `Byte`(2), `Short`(3), `Char`(4), `Int`(5), `Float`(7), `Date`(10),
-  `DateNano`(12), `Flex`(13); vectors `BoolVector`(22), `ByteVector`(23),
-  `ShortVector`(24), `CharVector`(25), `IntVector`(26), `LongVector`(27),
-  `FloatVector`(28), `DateVector`(31), `DateNanoVector`(32). Add as
-  encountered — the slot-lookup mechanism is generic, only the per-type
-  reader is missing. Also out of scope: the newer `ExternalPropertyType`
-  annotation layer (`int128`, `uuid`, `decimal128`, `flexMap`, `flexVector`,
-  `json`, `bson`, `javaScript`) that can sit on top of a base property type.
+- **`Flex` properties** (`PropertyType` 13) — dynamic property stored as an
+  embedded FlexBuffers blob (a different encoding from the table-based
+  FlatBuffers we decode; would need its own recursive decoder, not just
+  another `switch` branch). Deliberately excluded from the "cover every
+  remaining type" pass — different enough in kind to warrant its own scoped
+  effort rather than being bundled in.
+- The newer `ExternalPropertyType` annotation layer (`int128`, `uuid`,
+  `decimal128`, `flexMap`, `flexVector`, `json`, `bson`, `javaScript`) that
+  can sit on top of a base property type.
+- The `UNSIGNED` property flag (see "Known gap" above).
 - Big-endian host support (FlatBuffers is always little-endian on disk;
   reading on a BE host needs an explicit byteswap we haven't added).
 - Windows/macOS build coverage (Linux-first, matching ebalistyka's own
@@ -151,15 +183,28 @@ ebalistyka's real schema — confirmed via a scan of every entity in
    the real `flatbuffers::Table` API was worth depending on in the first
    place; the Dart PoC was never fully correct here, it just went
    unnoticed until a byte-exact diff.
-8. **Language bindings** (future) — thin wrappers per target language calling
-   the C ABI directly: Dart (`dart:ffi`), Python (`ctypes`/`cffi`), etc.
-   Each wrapper is expected to be small since all logic lives in the core.
-9. **Alternate output formats** (future) — MessagePack/CBOR writer, or a
-   direct-to-SQLite writer (via the `sqlite3` C amalgamation) as an
-   alternative to JSON, selected by an output-format parameter — useful for
-   projects (like ebalistyka) whose actual migration target is SQL, skipping
-   the JSON intermediate entirely.
-10. **`OB_DUMP_SOURCE_BUFFER` input mode** (future) — LMDB's API only opens
+8. **Full `PropertyType` coverage + unit tests** — done. Added the remaining
+   13 scalar/vector types (see "Scope" above) and `tests/fb_decode_test.cpp`.
+   Deliberately prioritized ahead of the Dart wrapper (step 9) on request:
+   the goal is to close out type coverage once and not have to revisit
+   `fb_decode.cpp` per-type again later, even though ebalistyka's own real
+   schema only needs the original 7. `Flex`/`ToMany` stayed out of scope by
+   explicit choice — different enough in kind (a different encoding /
+   a different LMDB structure, respectively) to deserve their own pass.
+9. **Language bindings** (next) — thin wrappers per target language calling
+   the C ABI directly, starting with Dart (`dart:ffi`) since that's what
+   unblocks ebalistyka's actual migration. Likely needs a pub.dev package
+   that vendors this repo's C/C++ sources and builds them via a
+   `build_native`-style script (same shape as `dart_lmdb2`/`dart_bclibc`),
+   rather than depending on a prebuilt binary. Python (`ctypes`/`cffi`) etc.
+   can follow the same pattern later. Each wrapper is expected to be small
+   since all logic lives in the core.
+10. **Alternate output formats** (future) — MessagePack/CBOR writer, or a
+    direct-to-SQLite writer (via the `sqlite3` C amalgamation) as an
+    alternative to JSON, selected by an output-format parameter — useful for
+    projects (like ebalistyka) whose actual migration target is SQL, skipping
+    the JSON intermediate entirely.
+11. **`OB_DUMP_SOURCE_BUFFER` input mode** (future) — LMDB's API only opens
     real files; a pure in-memory buffer input can't be handed to
     `mdb_env_open` directly. On Linux, back it with `memfd_create` + one
     `write()` so LMDB still mmaps a real fd without touching disk — the

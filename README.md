@@ -61,10 +61,12 @@ if (json == NULL) {
 
 ## Scope
 
-Reads `bool`, `int64`/`Date`, `double`, `string`, `ToOne` relations,
-`Float64Vector`, and `StringVector` properties — everything actually observed
-in the schema this was built against. `ToMany` relations, `Flex` properties,
-and the remaining `PropertyType` codes are not implemented yet. See
+Reads all 20 non-`Flex` ObjectBox `PropertyType` codes: every fixed-width
+scalar (`Bool`, `Byte`, `Short`, `Char`, `Int`, `Long`, `Float`, `Double`,
+`Date`, `ToOne` relations, `DateNano`), `String`, and every vector form of
+the above. `ToMany` relations and `Flex` properties are not implemented —
+they're structurally different (a separate LMDB structure and a nested
+FlexBuffers blob, respectively), not just another field type. See
 `docs/BACKLOG.md` for the full list and the reasoning behind each design
 choice.
 

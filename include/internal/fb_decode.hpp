@@ -10,6 +10,14 @@
 
 namespace ob_dump_internal {
 
+// property_id -> vtable slot (flatbuffers::voffset_t, which is uint16_t —
+// returned as the plain typedef here so this header doesn't need to pull in
+// <flatbuffers/flatbuffers.h>). Exposed (not file-local to fb_decode.cpp) so
+// tests can build FlatBuffers fixtures at the exact same slots decodeObject()
+// will look for, instead of keeping a second copy of this formula that could
+// drift. See docs/BACKLOG.md for why this formula is correct.
+uint16_t slotFor(int propertyId);
+
 // Decodes one object's raw FlatBuffers table bytes into a JSON object keyed
 // by property name (does not include "id" — the caller adds that from the
 // LMDB key). Fields whose vtable slot is absent or out of range (e.g. a

@@ -20,14 +20,31 @@ int parseLeadingId(const std::string& idUid) {
 
 PropertyType toPropertyType(int raw) {
     switch (raw) {
-        case static_cast<int>(PropertyType::Bool):         return PropertyType::Bool;
-        case static_cast<int>(PropertyType::Long):         return PropertyType::Long;
-        case static_cast<int>(PropertyType::Double):       return PropertyType::Double;
-        case static_cast<int>(PropertyType::String):       return PropertyType::String;
-        case static_cast<int>(PropertyType::Relation):     return PropertyType::Relation;
-        case static_cast<int>(PropertyType::DoubleVector): return PropertyType::DoubleVector;
-        case static_cast<int>(PropertyType::StringVector): return PropertyType::StringVector;
-        default:                                           return PropertyType::Unknown;
+        case static_cast<int>(PropertyType::Bool):           return PropertyType::Bool;
+        case static_cast<int>(PropertyType::Byte):           return PropertyType::Byte;
+        case static_cast<int>(PropertyType::Short):          return PropertyType::Short;
+        case static_cast<int>(PropertyType::Char):           return PropertyType::Char;
+        case static_cast<int>(PropertyType::Int):            return PropertyType::Int;
+        case static_cast<int>(PropertyType::Long):           return PropertyType::Long;
+        case static_cast<int>(PropertyType::Float):          return PropertyType::Float;
+        case static_cast<int>(PropertyType::Double):         return PropertyType::Double;
+        case static_cast<int>(PropertyType::String):         return PropertyType::String;
+        case static_cast<int>(PropertyType::Date):           return PropertyType::Date;
+        case static_cast<int>(PropertyType::Relation):       return PropertyType::Relation;
+        case static_cast<int>(PropertyType::DateNano):       return PropertyType::DateNano;
+        case static_cast<int>(PropertyType::Flex):           return PropertyType::Flex;
+        case static_cast<int>(PropertyType::BoolVector):     return PropertyType::BoolVector;
+        case static_cast<int>(PropertyType::ByteVector):     return PropertyType::ByteVector;
+        case static_cast<int>(PropertyType::ShortVector):    return PropertyType::ShortVector;
+        case static_cast<int>(PropertyType::CharVector):     return PropertyType::CharVector;
+        case static_cast<int>(PropertyType::IntVector):      return PropertyType::IntVector;
+        case static_cast<int>(PropertyType::LongVector):     return PropertyType::LongVector;
+        case static_cast<int>(PropertyType::FloatVector):    return PropertyType::FloatVector;
+        case static_cast<int>(PropertyType::DoubleVector):   return PropertyType::DoubleVector;
+        case static_cast<int>(PropertyType::StringVector):   return PropertyType::StringVector;
+        case static_cast<int>(PropertyType::DateVector):     return PropertyType::DateVector;
+        case static_cast<int>(PropertyType::DateNanoVector): return PropertyType::DateNanoVector;
+        default:                                             return PropertyType::Unknown;
     }
 }
 
