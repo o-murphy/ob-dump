@@ -6,7 +6,7 @@ description: >
   own fetch_native download lands in the pub cache, which isn't part of a
   shipped app bundle on mobile). Use this from a Flutter app; use
   ob_dump_reader directly from plain Dart (CLI scripts, server, tests).
-version: 0.1.0
+version: 0.1.0-dev
 homepage: https://github.com/o-murphy/ob-dump
 environment:
   sdk: '>=3.5.0 <4.0.0'

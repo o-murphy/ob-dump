@@ -10,6 +10,13 @@
 #include "internal/fbs_gen.hpp"
 #include "internal/schema_json.hpp"
 
+// Normally supplied by CMakeLists.txt (OB_DUMP_VERSION cache variable,
+// overridden by the release workflow from the git tag) — this fallback is
+// only for compiling this file outside that build system.
+#ifndef OB_DUMP_VERSION
+#define OB_DUMP_VERSION "0.1.0-dev"
+#endif
+
 namespace {
 // thread_local so concurrent callers on different threads don't clobber
 // each other's error message; ob_dump_last_error()'s contract only promises
@@ -121,7 +128,7 @@ const char* ob_dump_last_error(void) {
 }
 
 const char* ob_dump_version(void) {
-    return "0.1.0";
+    return OB_DUMP_VERSION;
 }
 
 }  // extern "C"

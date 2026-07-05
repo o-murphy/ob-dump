@@ -11,6 +11,11 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
+# Overridden by the release workflow (-DOB_DUMP_VERSION=X.Y.Z, derived from
+# the git tag) so ob_dump_version() reports the real release version
+# instead of staying hardcoded forever.
+set(OB_DUMP_VERSION "0.1.0-dev" CACHE STRING "ob-dump version string, reported by ob_dump_version()")
+
 include(FetchContent)
 
 # ── LMDB ──────────────────────────────────────────────────────────────────────
@@ -76,7 +81,7 @@ add_library(ob_dump_core OBJECT
   src/ob_dump.cpp
 )
 target_include_directories(ob_dump_core PUBLIC include)
-target_compile_definitions(ob_dump_core PRIVATE OB_DUMP_BUILD)
+target_compile_definitions(ob_dump_core PRIVATE OB_DUMP_BUILD OB_DUMP_VERSION="${OB_DUMP_VERSION}")
 target_link_libraries(ob_dump_core PUBLIC lmdb flatbuffers_headers nlohmann_json::nlohmann_json)
 set_target_properties(ob_dump_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 

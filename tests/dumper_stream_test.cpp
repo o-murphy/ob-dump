@@ -6,6 +6,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <random>
+#include <sstream>
 #include <vector>
 
 #include <lmdb.h>
@@ -13,6 +16,26 @@
 #include "internal/dumper.hpp"
 
 namespace {
+
+// mkdtemp() is POSIX/BSD-only (missing on Windows, and unreliable via
+// <cstdlib> on macOS's libc++ — both broke CI). std::filesystem has no
+// built-in "make a unique temp dir", so build one: portable across every
+// platform this project targets.
+std::filesystem::path makeTempDir(const std::string& prefix) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<unsigned> dist(0, 0xFFFFFFu);
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        std::ostringstream name;
+        name << prefix << std::hex << dist(gen);
+        auto path = std::filesystem::temp_directory_path() / name.str();
+        std::error_code ec;
+        if (std::filesystem::create_directory(path, ec)) {
+            return path;
+        }
+    }
+    throw std::runtime_error("failed to create a unique temp directory");
+}
 
 std::array<uint8_t, 8> dataKey(int entityId, uint32_t objectId) {
     std::array<uint8_t, 8> key{};
@@ -93,15 +116,13 @@ struct Seen {
 }  // namespace
 
 int main() {
-    char tmpl[] = "/tmp/ob_dump_stream_test_XXXXXX";
-    char* dir = mkdtemp(tmpl);
-    assert(dir != nullptr);
-    writeFixture(dir);
+    std::filesystem::path dir = makeTempDir("ob_dump_stream_test_");
+    writeFixture(dir.string());
 
     // --- all records, in order ---
     {
         std::vector<Seen> seen;
-        ob_dump_internal::dumpStreaming(dir, kModelJson,
+        ob_dump_internal::dumpStreaming(dir.string(), kModelJson,
             [&](const std::string& name, uint32_t objId, const std::string& json) {
                 seen.push_back({name, objId, json});
                 return true;
@@ -121,7 +142,7 @@ int main() {
     // --- early stop ---
     {
         int count = 0;
-        ob_dump_internal::dumpStreaming(dir, kModelJson,
+        ob_dump_internal::dumpStreaming(dir.string(), kModelJson,
             [&](const std::string&, uint32_t, const std::string&) {
                 ++count;
                 return false;  // stop after the first record
@@ -130,10 +151,8 @@ int main() {
         std::puts("dumpStreaming stops early when callback returns false: OK");
     }
 
-    // Best-effort cleanup (not using <filesystem> to keep this test's own
-    // dependency footprint minimal).
-    std::string rmCmd = "rm -rf " + std::string(dir);
-    (void)std::system(rmCmd.c_str());
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);  // best-effort cleanup
 
     std::puts("dumper_stream_test: OK");
     return 0;
