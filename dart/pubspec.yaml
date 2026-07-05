@@ -1,0 +1,16 @@
+name: ob_dump_reader
+description: >
+  Minimal ObjectBox LMDB reader toolkit — walks a data.mdb file and hands you
+  each record's raw FlatBuffers table bytes plus its entity/object id. Pair
+  with `ob_dump --fbs`/`--schema` and `flatc --dart` to decode those bytes
+  into typed objects without any native/FFI dependency: this package only
+  depends on dart_lmdb2 (pure Dart-callable, no FFI to ob-dump's own C++ core).
+version: 0.1.0
+homepage: https://github.com/o-murphy/ob-dump
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+dependencies:
+  dart_lmdb2: ^0.9.12
+dev_dependencies:
+  test: ^1.25.0
+  flat_buffers: ^25.9.23

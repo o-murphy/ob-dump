@@ -10,6 +10,12 @@ blocked from bundling the closed-source `objectbox-c` binary on Flathub). See
 that project's PoC at `tools/ob_migration_poc/` for the reference Dart
 implementation this design ports from.
 
+This repo also contains [`dart/`](../dart), a small standalone pub.dev
+package (`ob_dump_reader`) for reading an ObjectBox database directly from
+Dart — see phased-plan item 10 below for why that's a thin LMDB-traversal
+toolkit paired with official `flatc --dart` output, not an FFI binding to
+this C++ core.
+
 ## Why this exists (vs. linking objectbox-c)
 
 `objectbox-c` is a closed-source prebuilt binary. Its FlatBuffers encoding
@@ -267,14 +273,42 @@ decoder's output exactly.
    verification. Inserted ahead of language bindings since it was a small,
    self-contained addition requested in the middle of this phase; doesn't
    change the priority of what follows.
-10. **Language bindings** (next) — thin wrappers per target language calling
-    the C ABI directly, starting with Dart (`dart:ffi`) since that's what
-    unblocks ebalistyka's actual migration. Likely needs a pub.dev package
-    that vendors this repo's C/C++ sources and builds them via a
-    `build_native`-style script (same shape as `dart_lmdb2`/`dart_bclibc`),
-    rather than depending on a prebuilt binary. Python (`ctypes`/`cffi`) etc.
-    can follow the same pattern later. Each wrapper is expected to be small
-    since all logic lives in the core.
+10. **Dart: reader toolkit, not an FFI binding** — done, supersedes the
+    original plan for Dart specifically (quoted below for the record).
+    `dart/` is a small standalone pub.dev package (`ob_dump_reader`, MIT,
+    `dart pub publish --dry-run` clean, 0 warnings) that only does LMDB
+    traversal + ObjectBox key parsing (`readObjectBoxRecords()` — ported
+    from `tools/ob_migration_poc`'s Dart code, minus the FlatBuffers decode
+    part), depending on `dart_lmdb2` alone. Decoding is left entirely to
+    official `flatc --dart` output generated from this project's own `--fbs`
+    — **no FFI to ob-dump's C++ core, no vendored native sources, no
+    `build_native` script needed for Dart at all.** Verified end-to-end
+    against a real database: generated `schema.fbs` from the real model, ran
+    `flatc --dart`, read a real `Ammo` record with `readObjectBoxRecords`,
+    decoded it with the generated class — every field matched the same
+    values already confirmed by three earlier, independent verifications
+    (Dart PoC, this project's own C++ decoder, a C++ `flatc` consumer).
+    Other languages can follow the identical pattern (their own LMDB
+    binding + `flatc --<lang>` + this project's `--schema`/`--fbs`) with no
+    C++ FFI needed either, as long as *a* LMDB binding exists for that
+    language — which is common (LMDB is a popular embedded store).
+    ob-dump's own C ABI remains valuable independently: as a
+    zero-additional-dependency CLI/library for anyone who doesn't want to
+    write any code at all (just wants a JSON dump), and for languages
+    without a usable LMDB binding, where FFI to the C core would still be
+    the fallback.
+
+    <details><summary>Original plan (superseded for Dart, kept for context)</summary>
+
+    Thin wrappers per target language calling the C ABI directly, starting
+    with Dart (`dart:ffi`) since that's what unblocks ebalistyka's actual
+    migration. Likely needs a pub.dev package that vendors this repo's C/C++
+    sources and builds them via a `build_native`-style script (same shape as
+    `dart_lmdb2`/`dart_bclibc`), rather than depending on a prebuilt binary.
+    Python (`ctypes`/`cffi`) etc. can follow the same pattern later. Each
+    wrapper is expected to be small since all logic lives in the core.
+
+    </details>
 11. **Alternate output formats** (future) — MessagePack/CBOR writer, or a
     direct-to-SQLite writer (via the `sqlite3` C amalgamation) as an
     alternative to JSON, selected by an output-format parameter — useful for
