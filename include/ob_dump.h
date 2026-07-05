@@ -56,8 +56,34 @@ OB_DUMP_API char* ob_dump(const ObDumpSource* source, const char* model_json);
 
 OB_DUMP_API void ob_dump_free(char* json);
 
-/* Thread-local message describing the most recent failure of ob_dump() on
-   this thread. Valid until the next ob_dump() call on the same thread. */
+/*
+ * Re-serializes objectbox-model.json as a clean, minimal JSON schema
+ * listing (entityId/name/properties with id/name/type/vtableSlot) — no
+ * ObjectBox model.json noise (uids, indexes, retired-property arrays,
+ * flags). Useful on its own, and as the entityId -> table-name/shape
+ * lookup needed by anyone consuming ob_dump_fbs()'s output (see ob_dump_fbs).
+ *
+ * Same NULL/ob_dump_last_error()/ob_dump_free() contract as ob_dump().
+ */
+OB_DUMP_API char* ob_dump_schema(const char* model_json);
+
+/*
+ * Generates a FlatBuffers IDL (.fbs) describing every entity in
+ * objectbox-model.json, so any language's `flatc` can generate a typed
+ * reader for the raw FlatBuffers table bytes this library otherwise decodes
+ * dynamically at runtime. This does NOT give a consumer LMDB access or the
+ * ObjectBox key-format parsing (entity_id/object_id from the 8-byte LMDB
+ * key) — only the per-record decode step. Pair with ob_dump_schema() for
+ * the entityId -> table dispatch a standalone consumer still needs. See
+ * docs/BACKLOG.md for the full rationale.
+ *
+ * Same NULL/ob_dump_last_error()/ob_dump_free() contract as ob_dump().
+ */
+OB_DUMP_API char* ob_dump_fbs(const char* model_json);
+
+/* Thread-local message describing the most recent failure of ob_dump()/
+   ob_dump_schema()/ob_dump_fbs() on this thread. Valid until the next call
+   to any of those on the same thread. */
 OB_DUMP_API const char* ob_dump_last_error(void);
 
 OB_DUMP_API const char* ob_dump_version(void);

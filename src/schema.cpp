@@ -1,6 +1,7 @@
 #include "internal/schema.hpp"
 
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <stdexcept>
 
 namespace ob_dump_internal {
@@ -83,6 +84,48 @@ Schema Schema::parse(const std::string& modelJson) {
 const EntityDef* Schema::find(int entityId) const {
     auto it = entitiesById_.find(entityId);
     return it == entitiesById_.end() ? nullptr : &it->second;
+}
+
+std::vector<const EntityDef*> Schema::all() const {
+    std::vector<const EntityDef*> result;
+    result.reserve(entitiesById_.size());
+    for (const auto& [id, entity] : entitiesById_) {
+        result.push_back(&entity);
+    }
+    std::sort(result.begin(), result.end(),
+             [](const EntityDef* a, const EntityDef* b) { return a->entityId < b->entityId; });
+    return result;
+}
+
+const char* toString(PropertyType type) {
+    switch (type) {
+        case PropertyType::Bool:           return "Bool";
+        case PropertyType::Byte:           return "Byte";
+        case PropertyType::Short:          return "Short";
+        case PropertyType::Char:           return "Char";
+        case PropertyType::Int:            return "Int";
+        case PropertyType::Long:           return "Long";
+        case PropertyType::Float:          return "Float";
+        case PropertyType::Double:         return "Double";
+        case PropertyType::String:         return "String";
+        case PropertyType::Date:           return "Date";
+        case PropertyType::Relation:       return "Relation";
+        case PropertyType::DateNano:       return "DateNano";
+        case PropertyType::Flex:           return "Flex";
+        case PropertyType::BoolVector:     return "BoolVector";
+        case PropertyType::ByteVector:     return "ByteVector";
+        case PropertyType::ShortVector:    return "ShortVector";
+        case PropertyType::CharVector:     return "CharVector";
+        case PropertyType::IntVector:      return "IntVector";
+        case PropertyType::LongVector:     return "LongVector";
+        case PropertyType::FloatVector:    return "FloatVector";
+        case PropertyType::DoubleVector:   return "DoubleVector";
+        case PropertyType::StringVector:   return "StringVector";
+        case PropertyType::DateVector:     return "DateVector";
+        case PropertyType::DateNanoVector: return "DateNanoVector";
+        case PropertyType::Unknown:        return "Unknown";
+    }
+    return "Unknown";
 }
 
 }  // namespace ob_dump_internal

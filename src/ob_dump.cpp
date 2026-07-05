@@ -3,15 +3,43 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <functional>
 #include <string>
 
 #include "internal/dumper.hpp"
+#include "internal/fbs_gen.hpp"
+#include "internal/schema_json.hpp"
 
 namespace {
 // thread_local so concurrent callers on different threads don't clobber
 // each other's error message; ob_dump_last_error()'s contract only promises
-// validity "until the next ob_dump() call on the same thread".
+// validity "until the next ob_dump()/ob_dump_schema()/ob_dump_fbs() call on
+// the same thread".
 thread_local std::string g_lastError;
+
+// Shared by all three public entry points: run `body`, malloc+copy its
+// std::string result into a C string, and translate any thrown exception
+// into a NULL return + g_lastError message instead of letting it cross the
+// FFI boundary (which is undefined behavior for non-C++ callers).
+char* runCatchingErrors(const std::function<std::string()>& body) {
+    try {
+        std::string result = body();
+        char* out = static_cast<char*>(std::malloc(result.size() + 1));
+        if (out == nullptr) {
+            g_lastError = "ob_dump: out of memory";
+            return nullptr;
+        }
+        std::memcpy(out, result.data(), result.size());
+        out[result.size()] = '\0';
+        return out;
+    } catch (const std::exception& e) {
+        g_lastError = e.what();
+        return nullptr;
+    } catch (...) {
+        g_lastError = "ob_dump: unknown error";
+        return nullptr;
+    }
+}
 }  // namespace
 
 extern "C" {
@@ -31,23 +59,24 @@ char* ob_dump(const ObDumpSource* source, const char* model_json) {
         return nullptr;
     }
 
-    try {
-        std::string json = ob_dump_internal::dumpToJson(source->as.path, model_json);
-        char* out = static_cast<char*>(std::malloc(json.size() + 1));
-        if (out == nullptr) {
-            g_lastError = "ob_dump: out of memory";
-            return nullptr;
-        }
-        std::memcpy(out, json.data(), json.size());
-        out[json.size()] = '\0';
-        return out;
-    } catch (const std::exception& e) {
-        g_lastError = e.what();
-        return nullptr;
-    } catch (...) {
-        g_lastError = "ob_dump: unknown error";
+    const char* path = source->as.path;
+    return runCatchingErrors([&] { return ob_dump_internal::dumpToJson(path, model_json); });
+}
+
+char* ob_dump_schema(const char* model_json) {
+    if (model_json == nullptr) {
+        g_lastError = "ob_dump_schema: model_json must not be null";
         return nullptr;
     }
+    return runCatchingErrors([&] { return ob_dump_internal::schemaToJson(model_json); });
+}
+
+char* ob_dump_fbs(const char* model_json) {
+    if (model_json == nullptr) {
+        g_lastError = "ob_dump_fbs: model_json must not be null";
+        return nullptr;
+    }
+    return runCatchingErrors([&] { return ob_dump_internal::generateFbs(model_json); });
 }
 
 void ob_dump_free(char* json) {

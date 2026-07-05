@@ -68,6 +68,8 @@ FetchContent_MakeAvailable(json)
 # sources of its own.
 add_library(ob_dump_core OBJECT
   src/schema.cpp
+  src/schema_json.cpp
+  src/fbs_gen.cpp
   src/lmdb_reader.cpp
   src/fb_decode.cpp
   src/dumper.cpp

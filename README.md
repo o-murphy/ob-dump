@@ -28,11 +28,15 @@ source-availability requirements).
 
 ## CLI
 
+Three modes, each behind an explicit flag:
+
 ```sh
-build/ob_dump <path/to/data.mdb> <path/to/objectbox-model.json> [-o dump.json]
+build/ob_dump --json   <path/to/data.mdb> <path/to/objectbox-model.json> [-o dump.json]
+build/ob_dump --schema <path/to/objectbox-model.json> [-o schema.json]
+build/ob_dump --fbs    <path/to/objectbox-model.json> [-o schema.fbs]
 ```
 
-Prints JSON to stdout by default (`-o` writes to a file instead), shaped as:
+`--json` dumps the actual data, shaped as:
 
 ```json
 {
@@ -43,6 +47,18 @@ Prints JSON to stdout by default (`-o` writes to a file instead), shaped as:
 ```
 
 Entities with zero stored objects are omitted entirely.
+
+The other two modes export the *schema*, not the data:
+
+`--schema` prints a clean, minimal JSON listing of every entity/property
+(id, name, type, computed vtable slot) — stripped of ObjectBox's model.json
+noise. `--fbs` generates a valid FlatBuffers IDL file, so any language's
+`flatc` can generate its own typed reader for the raw table bytes instead of
+depending on this library — verified against a real database (see
+`docs/BACKLOG.md`), but note it only replaces the per-record FlatBuffers
+decode step, not LMDB access or the ObjectBox key-format parsing (see
+`docs/BACKLOG.md` "Schema export" for exactly what that does and doesn't
+cover).
 
 ## C API
 
@@ -57,6 +73,10 @@ if (json == NULL) {
     // use json ...
     ob_dump_free(json); // never plain free()/delete — see ob_dump.h
 }
+
+// Schema-only exports — same NULL/ob_dump_last_error()/ob_dump_free() contract:
+char* schema = ob_dump_schema(model_json_contents);
+char* fbs    = ob_dump_fbs(model_json_contents);
 ```
 
 ## Scope

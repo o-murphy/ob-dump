@@ -75,15 +75,21 @@ typedef struct ObDumpSource {
 // across the FFI boundary in some target languages/build configs).
 char*       ob_dump(const ObDumpSource* source, const char* model_json);
 void        ob_dump_free(char* json);
+char*       ob_dump_schema(const char* model_json);  // clean schema JSON — see below
+char*       ob_dump_fbs(const char* model_json);     // .fbs IDL generation — see below
 const char* ob_dump_last_error(void);
 ```
 
-CLI wraps this 1:1:
+CLI wraps this 1:1, one explicit flag per mode (`--json`/`--schema`/`--fbs` —
+kept uniform rather than leaving the data-dump mode flagless):
 
 ```
-ob_dump <base>.mdb objectbox-model.json [-o dump.json]
-```//
-(no `-o` → JSON on stdout, so `ob_dump base.mdb model.json > dump.json` works too)
+ob_dump --json   <base>.mdb objectbox-model.json [-o dump.json]
+ob_dump --schema objectbox-model.json [-o schema.json]
+ob_dump --fbs    objectbox-model.json [-o schema.fbs]
+```
+
+(no `-o` → output on stdout, so e.g. `ob_dump --json base.mdb model.json > dump.json` works too)
 
 ## Scope — what v1 reads
 
@@ -131,6 +137,71 @@ read would print incorrectly. Not fixed now because it's an orthogonal
 concern to "which `PropertyType` codes are implemented" (the thing this
 round of work was scoped to) and no real schema encountered so far uses
 `UNSIGNED` — tracked here rather than silently ignored.
+
+## Schema export: `--schema` and `--fbs`
+
+Two CLI modes (and matching `ob_dump_schema()`/`ob_dump_fbs()` C API
+functions) export the *schema*, not the data:
+
+- **`ob_dump --schema <model.json>`** — re-serializes the parsed schema as
+  clean, minimal JSON (`{entities: [{entityId, name, properties: [{id, name,
+  type, vtableSlot}]}]}`), stripped of ObjectBox's model.json noise (uids,
+  indexes, retired-property arrays, flags). Useful on its own, and as the
+  `entity_id -> table name/shape` lookup a standalone `.fbs` consumer needs
+  (see below).
+- **`ob_dump --fbs <model.json>`** — generates a valid FlatBuffers IDL
+  (`.fbs`) so any language's `flatc` can produce a typed reader for the raw
+  table bytes, as an alternative to depending on this library's own C ABI.
+
+**Important limit, so this isn't oversold:** the `.fbs` (and flatc's
+generated code from it) only replaces the *per-record FlatBuffers decode*
+step of the pipeline. It does **not** give a consumer LMDB file access (they
+still need an LMDB binding for their language — commonly available, e.g.
+`py-lmdb`, the `lmdb` crate) or the 8-byte ObjectBox key-format parsing
+(`entity_id`/`object_id` extraction — see "Why this exists" above; this is
+ObjectBox's own convention, not part of any `.fbs`). A from-scratch consumer
+in another language still has to: open/walk `data.mdb` with their own LMDB
+binding, parse the key themselves per our documented format, look up which
+generated table type an `entity_id` corresponds to (via `--schema`'s
+output), and only then hand the raw value bytes to flatc's generated
+accessor. This is a real reduction in effort — the trickiest, most
+bug-prone part (vtable/type decoding) is now official generated code — but
+not a drop-in replacement for depending on `ob-dump` directly.
+
+**Design notes:**
+- Field declaration order in the generated `.fbs` follows property id order
+  (that's what determines each field's vtable slot). Gaps from retired
+  properties are filled with anonymous `_reserved_N:ubyte (deprecated);`
+  placeholders to keep slot numbering aligned — flatc still counts a
+  deprecated field's declaration towards the slot index, it just generates
+  no accessor for it. A retired property's original type isn't recoverable
+  from model.json (only its uid is kept), so the placeholder type is
+  arbitrary and irrelevant.
+- `Flex` properties are emitted as `[ubyte]` (the raw, still-FlexBuffers-
+  -encoded bytes) rather than skipped or deprecated — real, accessible data,
+  just not decoded any further here (matches the "Explicitly out of scope"
+  stance on Flex below).
+- An `Unknown`/unrecognized raw type code is kept **by name** (so a human
+  reading the `.fbs` can see the field existed) but marked `(deprecated)`
+  since its true shape can't be safely guessed.
+- Confirmed the `id` property (id 1) really is written into the FlatBuffers
+  table itself, not just the LMDB key — checked empirically against a real
+  `Ammo` record (`Table::CheckField(4)` true, value matches the real object
+  id) before deciding to treat it as a normal field rather than a special
+  case.
+
+**Verified end-to-end against real data**, not just unit tests: built a
+standalone `flatc` (disabled in this project's own build — see "FlatBuffers
+decode" in Design decisions — but buildable on demand from the same fetched
+source), ran it on the `.fbs` generated from ebalistyka's real
+`objectbox-model.json` (`flatc --cpp`, zero errors — only cosmetic
+snake_case naming-convention warnings, since our field names come straight
+from Dart property names). Extracted a real `Ammo` record's raw table bytes
+and read them with the officially generated code, entirely independent of
+this project's own `fb_decode.cpp`: `Verify()` succeeded, and every field
+checked (`id`, `name`, `dragTypeValue`, `bcG1`, `bcG7`, `useMultiBcG1`,
+`ownerId`, `caliberInch`, `weightGrain`, `muzzleVelocityMps`) matched our own
+decoder's output exactly.
 
 ## Explicitly out of scope for v1 (tracked here, not silently ignored)
 
@@ -191,20 +262,25 @@ round of work was scoped to) and no real schema encountered so far uses
    schema only needs the original 7. `Flex`/`ToMany` stayed out of scope by
    explicit choice — different enough in kind (a different encoding /
    a different LMDB structure, respectively) to deserve their own pass.
-9. **Language bindings** (next) — thin wrappers per target language calling
-   the C ABI directly, starting with Dart (`dart:ffi`) since that's what
-   unblocks ebalistyka's actual migration. Likely needs a pub.dev package
-   that vendors this repo's C/C++ sources and builds them via a
-   `build_native`-style script (same shape as `dart_lmdb2`/`dart_bclibc`),
-   rather than depending on a prebuilt binary. Python (`ctypes`/`cffi`) etc.
-   can follow the same pattern later. Each wrapper is expected to be small
-   since all logic lives in the core.
-10. **Alternate output formats** (future) — MessagePack/CBOR writer, or a
+9. **Schema export (`--schema`, `--fbs`)** — done. See "Schema export"
+   section above for the design and the real-`flatc` end-to-end
+   verification. Inserted ahead of language bindings since it was a small,
+   self-contained addition requested in the middle of this phase; doesn't
+   change the priority of what follows.
+10. **Language bindings** (next) — thin wrappers per target language calling
+    the C ABI directly, starting with Dart (`dart:ffi`) since that's what
+    unblocks ebalistyka's actual migration. Likely needs a pub.dev package
+    that vendors this repo's C/C++ sources and builds them via a
+    `build_native`-style script (same shape as `dart_lmdb2`/`dart_bclibc`),
+    rather than depending on a prebuilt binary. Python (`ctypes`/`cffi`) etc.
+    can follow the same pattern later. Each wrapper is expected to be small
+    since all logic lives in the core.
+11. **Alternate output formats** (future) — MessagePack/CBOR writer, or a
     direct-to-SQLite writer (via the `sqlite3` C amalgamation) as an
     alternative to JSON, selected by an output-format parameter — useful for
     projects (like ebalistyka) whose actual migration target is SQL, skipping
     the JSON intermediate entirely.
-11. **`OB_DUMP_SOURCE_BUFFER` input mode** (future) — LMDB's API only opens
+12. **`OB_DUMP_SOURCE_BUFFER` input mode** (future) — LMDB's API only opens
     real files; a pure in-memory buffer input can't be handed to
     `mdb_env_open` directly. On Linux, back it with `memfd_create` + one
     `write()` so LMDB still mmaps a real fd without touching disk — the

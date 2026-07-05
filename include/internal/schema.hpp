@@ -67,9 +67,18 @@ public:
 
     const EntityDef* find(int entityId) const;
 
+    // All entities, sorted by entityId — used by the schema-json exporter
+    // and the .fbs generator, both of which need deterministic output.
+    std::vector<const EntityDef*> all() const;
+
 private:
     std::unordered_map<int, EntityDef> entitiesById_;
 };
+
+// Human-readable name for a PropertyType, e.g. for the schema-json export
+// and error messages. Returns "Unknown" for PropertyType::Unknown (an
+// unrecognized raw type code — see Schema::parse).
+const char* toString(PropertyType type);
 
 }  // namespace ob_dump_internal
 
