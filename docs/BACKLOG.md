@@ -623,6 +623,82 @@ decoder's output exactly.
     loudly, before creating anything, if it doesn't — verified locally by
     simulating both the "entry exists" and "entry missing" cases against a
     scratch copy of the real CHANGELOG); and this workflow, like items 15
-    and 17, has **not actually been run** — no tag has been pushed yet, so
-    none of the runner-availability assumptions or the cross-job checkout
-    handoff have been confirmed against a real GitHub Actions execution.
+    and 17, has **not actually been run for real** (see below — it *has*
+    been dry-run tested against real CI, which caught several real bugs).
+
+    **Real CI bugs this surfaced, on the *existing* `cpp.yml`/`flutter.yml`
+    workflows** (checked via `gh run view --log-failed`, not guessed):
+    - `tests/dumper_stream_test.cpp` used POSIX `mkdtemp()` for its temp
+      fixture directory — undeclared on Windows (MSVC: `error C3861`) and
+      unreliable via `<cstdlib>` on macOS's libc++ (`error: use of
+      undeclared identifier`). Replaced with a small portable
+      `std::filesystem`-based temp-dir helper (random suffix + retry loop —
+      `std::filesystem` has no built-in "unique temp dir", unlike Python's
+      `tempfile.mkdtemp`).
+    - `flutter analyze`'s "path dependencies aren't publishable" issue
+      isn't just a warning — it actually fails the command (exit 1),
+      contradicting what an earlier BACKLOG entry claimed after checking
+      locally. That local check was itself wrong: `flutter analyze | tail
+      -5; echo $?` reports `tail`'s exit code, not `flutter analyze`'s
+      (classic pipeline exit-status masking). Fixed by adding
+      `publish_to: none` to `flutter/pubspec.yaml` for now (exactly what
+      the tool's own message suggests) — `release.yml`'s real-publish step
+      strips it back out ephemerally, alongside the path-dep swap (see
+      below), since `publish_to: none` would otherwise block `pub publish`
+      too and `pub remove`/`pub add` only manage dependencies, not that
+      top-level field. Verified the removal with a plain `sed` test against
+      the real file before trusting it in CI.
+    - A genuine Windows-only linker collision in the existing `cpp.yml`
+      (`LINK : fatal error LNK1104: cannot open file '...\ob_dump.exp'`):
+      the `ob_dump` shared-library target and the `ob_dump_cli` executable
+      (`OUTPUT_NAME ob_dump`) both resolve to the same base name in the
+      same output directory. Invisible on Linux/macOS (`libob_dump.so`/
+      `.dylib` vs. plain `ob_dump` are already distinct filenames), but on
+      Windows a DLL's import-library side-effect (`ob_dump.lib`/`.exp`)
+      collides with the same pair CMake/MSVC provisions by default for
+      *any* target sharing that name — including a plain .exe. Fixed by
+      setting `ARCHIVE_OUTPUT_NAME` (not `OUTPUT_NAME`) specifically for
+      `ob_dump_cli`, so only that incidental archive-output naming changes
+      — the actual `ob_dump`/`ob_dump.exe` binary path stays exactly what's
+      already documented everywhere else. Rebuilt and re-ran the full test
+      suite locally after this change to confirm no Linux regression (a
+      real Windows CI run is still the only way to confirm the actual fix,
+      not yet done).
+
+    **`workflow_dispatch` dry-run support**, added specifically so the
+    whole pipeline shape can be validated without pushing a real tag:
+    a manual "Run workflow" takes a `tag` input (simulated, doesn't need to
+    exist) and a `dry_run` boolean (**defaults to `true`** — so clicking
+    the button with default options can never accidentally publish
+    anything). `IS_DRY_RUN` gates every side-effecting step individually
+    (version-bump commit/push, GitHub release creation, both `pub publish
+    --force` calls) while leaving build/test/package/changelog-extraction
+    running unconditionally, so a dry run still validates as much of the
+    real pipeline as it safely can. One thing a dry run *can't* meaningfully
+    exercise: `publish-flutter`'s dependency swap, since it points at
+    whatever `publish-dart` "just published" — on a dry run nothing was
+    actually published, so pub.dev has no such version to resolve; that
+    step (and the rest of the job after it) is skipped rather than left to
+    fail for an uninteresting reason, while the job itself (and its
+    required-reviewers environment gate) still runs, since triggering that
+    gate correctly is itself part of what's worth validating.
+
+    **Validated so far, concretely, not just by review:**
+    `actionlint` (a real GitHub-Actions-specific linter, downloaded via
+    `gh release download` since it wasn't preinstalled — not just generic
+    YAML syntax checking) passes clean on every workflow in this repo,
+    including this one; it caught two real bugs before this was ever run —
+    `needs.bump-versions.outputs.*` referenced from `publish-flutter`
+    despite `bump-versions` only being a *transitive* dependency there (via
+    `publish-dart`) — `needs.<job>.outputs` is only visible to a job's
+    *direct* `needs:` entries, so `bump-versions` had to be added to
+    `publish-flutter`'s `needs:` list explicitly even though the ordering
+    was already correct either way; and a YAML "nested mappings not
+    allowed" parse error from an unquoted colon inside a `run:`/`name:`
+    string value (`"Dry run: nothing was..."`, `"...publish_to: none)"`) —
+    fixed by quoting those particular values. Also locally simulated (on a
+    scratch copy of the real files, not the actual pubspec/changelog) the
+    version-strip, the lockstep `sed` bump, the changelog-extraction awk
+    pattern against both a matching and a missing version section, and the
+    `publish_to: none` removal — all before trusting any of them inside
+    the actual workflow.
