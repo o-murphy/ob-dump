@@ -226,8 +226,17 @@ decoder's output exactly.
 - The `UNSIGNED` property flag (see "Known gap" above).
 - Big-endian host support (FlatBuffers is always little-endian on disk;
   reading on a BE host needs an explicit byteswap we haven't added).
-- Windows/macOS build coverage (Linux-first, matching ebalistyka's own
-  Flathub-first priority).
+- Windows/macOS build coverage: now CI-checked (`.github/workflows/cpp.yml`,
+  `.github/workflows/dart.yml`, a 3-OS matrix each), but *only* CI-checked —
+  no development or manual verification has happened on either platform,
+  Linux is still where this project is actually developed
+  (Flathub-first priority, matching ebalistyka's own). One known fix made
+  for portability: `lmdb_reader.cpp`'s file-type check used POSIX
+  `stat()`/`S_ISREG` (not available as-is on MSVC) — switched to
+  `std::filesystem::is_regular_file` (C++17, already our language
+  standard, portable). The Dart side inherits whatever platform coverage
+  `dart_lmdb2` itself has — its own README lists Linux/Windows/macOS/
+  Android/iOS.
 
 ## Phased plan
 
@@ -396,3 +405,21 @@ decoder's output exactly.
     other than ebalistyka's one-time migration actually wants this —
     ebalistyka's own use is a single run, where the manual workflow is
     already fine.
+15. **Cross-platform CI** — done: `.github/workflows/cpp.yml` and
+    `.github/workflows/dart.yml`, each a 3-OS matrix (`ubuntu-latest`,
+    `macos-latest`, `windows-latest`) running the existing test suites
+    (`ctest`, `dart test`). This checks the *build*, not real ObjectBox
+    data — none of the real-database verification done during development
+    (against ebalistyka's actual `data.mdb`) is repeated in CI, since that
+    file is personal user data, not something to commit as a fixture.
+    Fixed one real portability bug found while wiring this up (see
+    "Explicitly out of scope" above: `lmdb_reader.cpp`'s POSIX
+    `stat()`/`S_ISREG` → `std::filesystem::is_regular_file`). Important
+    caveat: these workflows have not actually been run yet — this repo has
+    no commits pushed to a remote yet (local commits are pending on the
+    user's own GPG signing setup), so "the C++/Dart core builds and its
+    unit tests pass on Windows and macOS" is reasoned through (portable
+    libraries throughout: LMDB officially supports Windows, `dart_lmdb2`
+    lists Windows/macOS support in its own README) but **not yet
+    empirically confirmed** on those two platforms — only Linux has
+    actually been built and tested so far. Confirm once pushed.

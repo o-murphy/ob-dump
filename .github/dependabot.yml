@@ -26,5 +26,4 @@ updates:
   # NOTE: the C++ core's dependencies (lmdb, flatbuffers, nlohmann/json) are
   # pinned via `GIT_TAG` in the root CMakeLists.txt's FetchContent_Declare
   # calls — Dependabot has no "cmake"/FetchContent ecosystem, so those
-  # version bumps stay manual. Add a `github-actions` entry here once this
-  # repo has workflows under .github/workflows/.
+  # version bumps stay manual.

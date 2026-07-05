@@ -2,9 +2,9 @@
 
 #include <lmdb.h>
 
-#include <sys/stat.h>
-
+#include <filesystem>
 #include <stdexcept>
+#include <system_error>
 
 namespace ob_dump_internal {
 
@@ -14,12 +14,16 @@ namespace {
 constexpr uint8_t kKeyTypeData   = 0x18;
 [[maybe_unused]] constexpr uint8_t kKeyTypeIndex  = 0x20;
 
+// std::filesystem rather than POSIX stat()/S_ISREG: those aren't available
+// as-is on MSVC, whereas <filesystem> is portable across every platform
+// this project targets (C++17, already our language standard).
 bool isRegularFile(const std::string& path) {
-    struct stat st{};
-    if (::stat(path.c_str(), &st) != 0) {
-        throw std::runtime_error("cannot stat path: " + path);
+    std::error_code ec;
+    bool result = std::filesystem::is_regular_file(path, ec);
+    if (ec) {
+        throw std::runtime_error("cannot stat path: " + path + ": " + ec.message());
     }
-    return S_ISREG(st.st_mode);
+    return result;
 }
 
 void check(int rc, const char* what) {
