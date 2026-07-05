@@ -10,28 +10,32 @@ namespace ob_dump_internal {
 namespace {
 
 // FlatBuffers .fbs field-type keyword for each PropertyType. Vector types
-// get the same element keyword wrapped in `[...]`.
-const char* fbsTypeName(PropertyType type) {
+// get the same element keyword wrapped in `[...]`. `isUnsigned` (from the
+// property's "flags" UNSIGNED bit — see schema.hpp) picks the unsigned .fbs
+// keyword for the integer types that have one, so a `flatc`-generated
+// reader in any language agrees with our own decode on signedness too, not
+// just on width.
+const char* fbsTypeName(PropertyType type, bool isUnsigned) {
     switch (type) {
         case PropertyType::Bool:
         case PropertyType::BoolVector:     return "bool";
         case PropertyType::Byte:
-        case PropertyType::ByteVector:     return "byte";
+        case PropertyType::ByteVector:     return isUnsigned ? "ubyte" : "byte";
         case PropertyType::Short:
-        case PropertyType::ShortVector:    return "short";
+        case PropertyType::ShortVector:    return isUnsigned ? "ushort" : "short";
         // Char is a 16-bit code unit, unsigned by convention (see
         // PropertyType::Char doc comment) — .fbs has no native "char".
         case PropertyType::Char:
         case PropertyType::CharVector:     return "ushort";
         case PropertyType::Int:
-        case PropertyType::IntVector:      return "int";
+        case PropertyType::IntVector:      return isUnsigned ? "uint" : "int";
         case PropertyType::Long:
         case PropertyType::LongVector:
         case PropertyType::Date:
         case PropertyType::DateVector:
         case PropertyType::Relation:
         case PropertyType::DateNano:
-        case PropertyType::DateNanoVector: return "long";
+        case PropertyType::DateNanoVector: return isUnsigned ? "ulong" : "long";
         case PropertyType::Float:
         case PropertyType::FloatVector:    return "float";
         case PropertyType::Double:
@@ -69,7 +73,7 @@ void writeField(std::ostringstream& out, const PropertyDef& prop) {
         out << "[ubyte];  // Flex: raw FlexBuffers-encoded bytes, not decoded further here\n";
         return;
     }
-    const char* base = fbsTypeName(prop.type);
+    const char* base = fbsTypeName(prop.type, prop.isUnsigned);
     if (isVectorType(prop.type)) {
         out << "[" << base << "]";
     } else {
@@ -77,9 +81,16 @@ void writeField(std::ostringstream& out, const PropertyDef& prop) {
     }
     if (prop.type == PropertyType::Unknown) {
         out << " (deprecated);  // unrecognized PropertyType code, shape unknown\n";
-    } else {
-        out << ";\n";
+        return;
     }
+    out << ";";
+    // externalType is a semantic annotation on top of the same wire type
+    // (e.g. Uuid is still physically a ByteVector) — surfaced as a comment
+    // since it doesn't change the .fbs field type itself.
+    if (const char* ext = externalTypeName(prop.externalType)) {
+        out << "  // external type: " << ext;
+    }
+    out << "\n";
 }
 
 void writeReservedPlaceholder(std::ostringstream& out, int propertyId) {

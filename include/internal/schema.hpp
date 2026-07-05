@@ -48,10 +48,46 @@ enum class PropertyType : int {
     Unknown        = -1,
 };
 
+// ObjectBox's `flags` bitmask on a property (official `objectbox` Dart
+// package, lib/src/modelinfo/enums.dart, class OBXPropertyFlag). We only
+// need UNSIGNED: it's the one bit that changes how an integer scalar/vector
+// must be decoded (the sign, not the width — width still comes from
+// PropertyType). Every other flag (INDEXED, UNIQUE, ...) doesn't affect
+// decoding and isn't tracked here.
+constexpr int kPropertyFlagUnsigned = 8192;
+
+// ObjectBox's `externalType` — an optional annotation layer *on top of* a
+// base PropertyType, for interop with an external system that has no
+// default ObjectBox type mapping (numeric values from the official
+// `objectbox` Dart package, lib/src/modelinfo/enums.dart, class
+// OBXExternalPropertyType — start at 100 specifically to never collide
+// with PropertyType's own codes). The base type still determines the wire
+// encoding (e.g. Uuid is still physically a ByteVector); externalType only
+// adds semantic meaning on top. See docs/BACKLOG.md "Schema export" (or
+// wherever this is documented) for exactly which of these get a nicer
+// decode (Uuid/Int128/Decimal128/Bson as hex/UUID strings) vs. which stay
+// out of scope (vectors-of-blobs, Mongo-specific ones).
+namespace ExternalPropertyType {
+constexpr int Unknown      = 0;
+constexpr int Int128       = 100;  // ByteVector, 16 bytes
+constexpr int Uuid         = 102;  // ByteVector, 16 bytes
+constexpr int Decimal128   = 103;  // ByteVector, 16 bytes (IEEE 754 decimal128)
+constexpr int FlexMap      = 107;  // Flex
+constexpr int FlexVector   = 108;  // Flex
+constexpr int Json         = 109;  // String
+constexpr int Bson         = 110;  // ByteVector
+constexpr int JavaScript   = 111;  // String
+constexpr int JsonToNative = 112;  // String
+constexpr int Int128Vector = 116;  // not decoded specially — see docs
+constexpr int UuidVector   = 118;  // not decoded specially — see docs
+}  // namespace ExternalPropertyType
+
 struct PropertyDef {
     int id;   // permanent numeric id from "id:uid" (drives vtable slot = 4 + (id-1)*2)
     std::string name;
     PropertyType type;
+    bool isUnsigned  = false;  // kPropertyFlagUnsigned bit of "flags"
+    int  externalType = ExternalPropertyType::Unknown;  // "externalType", if present
 };
 
 struct EntityDef {
@@ -79,6 +115,11 @@ private:
 // and error messages. Returns "Unknown" for PropertyType::Unknown (an
 // unrecognized raw type code — see Schema::parse).
 const char* toString(PropertyType type);
+
+// Human-readable name for an ExternalPropertyType code, or nullptr for
+// ExternalPropertyType::Unknown / an unrecognized code (schema-json omits
+// the field in that case rather than printing a meaningless placeholder).
+const char* externalTypeName(int code);
 
 }  // namespace ob_dump_internal
 

@@ -72,6 +72,12 @@ Schema Schema::parse(const std::string& modelJson) {
             // Unknown types are kept (not skipped) so fb_decode can report
             // exactly which property it couldn't read, rather than silently
             // producing a field count mismatch.
+            if (p.contains("flags")) {
+                prop.isUnsigned = (p.at("flags").get<int>() & kPropertyFlagUnsigned) != 0;
+            }
+            if (p.contains("externalType")) {
+                prop.externalType = p.at("externalType").get<int>();
+            }
             entity.properties.push_back(std::move(prop));
         }
 
@@ -126,6 +132,23 @@ const char* toString(PropertyType type) {
         case PropertyType::Unknown:        return "Unknown";
     }
     return "Unknown";
+}
+
+const char* externalTypeName(int code) {
+    switch (code) {
+        case ExternalPropertyType::Int128:       return "Int128";
+        case ExternalPropertyType::Uuid:         return "Uuid";
+        case ExternalPropertyType::Decimal128:   return "Decimal128";
+        case ExternalPropertyType::FlexMap:      return "FlexMap";
+        case ExternalPropertyType::FlexVector:   return "FlexVector";
+        case ExternalPropertyType::Json:         return "Json";
+        case ExternalPropertyType::Bson:         return "Bson";
+        case ExternalPropertyType::JavaScript:   return "JavaScript";
+        case ExternalPropertyType::JsonToNative: return "JsonToNative";
+        case ExternalPropertyType::Int128Vector: return "Int128Vector";
+        case ExternalPropertyType::UuidVector:   return "UuidVector";
+        default:                                 return nullptr;  // Unknown / unrecognized
+    }
 }
 
 }  // namespace ob_dump_internal

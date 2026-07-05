@@ -111,6 +111,42 @@ void decodeNumericVector(const Table* t, Verifier& v, flatbuffers::voffset_t slo
     out[name] = std::move(arr);
 }
 
+// Hex-encodes a byte vector's raw contents. Used for ExternalPropertyType
+// codes whose base wire type is ByteVector but that represent an opaque
+// blob (Int128, Decimal128, Bson) rather than a list of small integers —
+// see docs/BACKLOG.md. `asUuid` additionally groups the hex digits into
+// the canonical 8-4-4-4-12 UUID string form (only meaningful for exactly
+// 16 bytes; falls back to plain hex otherwise — a malformed/non-UUID field
+// shouldn't throw just because of its externalType annotation).
+void decodeByteVectorAsBlobString(const Table* t, Verifier& v, flatbuffers::voffset_t slot,
+                                  const std::string& name, nlohmann::json& out, bool asUuid) {
+    if (!t->CheckField(slot)) return;
+    if (!t->VerifyOffset(v, slot)) {
+        throw std::runtime_error("corrupt record: bad vector offset '" + name + "'");
+    }
+    const auto* vec = t->GetPointer<const flatbuffers::Vector<uint8_t>*>(slot);
+    if (!v.VerifyVector(vec)) {
+        throw std::runtime_error("corrupt record: bad byte vector '" + name + "'");
+    }
+    if (vec == nullptr) return;
+
+    static const char* kHexDigits = "0123456789abcdef";
+    std::string hex;
+    hex.reserve(vec->size() * 2);
+    for (flatbuffers::uoffset_t i = 0; i < vec->size(); ++i) {
+        uint8_t byte = vec->Get(i);
+        hex.push_back(kHexDigits[byte >> 4]);
+        hex.push_back(kHexDigits[byte & 0x0F]);
+    }
+
+    if (asUuid && vec->size() == 16) {
+        out[name] = hex.substr(0, 8) + "-" + hex.substr(8, 4) + "-" + hex.substr(12, 4) + "-" +
+                   hex.substr(16, 4) + "-" + hex.substr(20, 12);
+    } else {
+        out[name] = hex;
+    }
+}
+
 void decodeStringVector(const Table* t, Verifier& v, flatbuffers::voffset_t slot,
                        const std::string& name, nlohmann::json& out) {
     if (!t->CheckField(slot)) return;
@@ -151,16 +187,26 @@ nlohmann::json decodeObject(const uint8_t* data, size_t size, const EntityDef& e
         const auto slot = slotFor(prop.id);
         switch (prop.type) {
             case PropertyType::Bool:   decodeBool(table, verifier, slot, prop.name, out); break;
-            case PropertyType::Byte:   decodeScalar<int8_t>(table, verifier, slot, prop.name, out); break;
-            case PropertyType::Short:  decodeScalar<int16_t>(table, verifier, slot, prop.name, out); break;
+            case PropertyType::Byte:
+                if (prop.isUnsigned) decodeScalar<uint8_t>(table, verifier, slot, prop.name, out);
+                else                 decodeScalar<int8_t>(table, verifier, slot, prop.name, out);
+                break;
+            case PropertyType::Short:
+                if (prop.isUnsigned) decodeScalar<uint16_t>(table, verifier, slot, prop.name, out);
+                else                 decodeScalar<int16_t>(table, verifier, slot, prop.name, out);
+                break;
             // Unicode code unit — unsigned by convention, see PropertyType::Char doc comment.
             case PropertyType::Char:   decodeScalar<uint16_t>(table, verifier, slot, prop.name, out); break;
-            case PropertyType::Int:    decodeScalar<int32_t>(table, verifier, slot, prop.name, out); break;
+            case PropertyType::Int:
+                if (prop.isUnsigned) decodeScalar<uint32_t>(table, verifier, slot, prop.name, out);
+                else                 decodeScalar<int32_t>(table, verifier, slot, prop.name, out);
+                break;
             case PropertyType::Long:
             case PropertyType::Date:
             case PropertyType::Relation:
             case PropertyType::DateNano:
-                decodeScalar<int64_t>(table, verifier, slot, prop.name, out);
+                if (prop.isUnsigned) decodeScalar<uint64_t>(table, verifier, slot, prop.name, out);
+                else                 decodeScalar<int64_t>(table, verifier, slot, prop.name, out);
                 break;
             case PropertyType::Float:  decodeScalar<float>(table, verifier, slot, prop.name, out); break;
             case PropertyType::Double: decodeScalar<double>(table, verifier, slot, prop.name, out); break;
@@ -168,21 +214,37 @@ nlohmann::json decodeObject(const uint8_t* data, size_t size, const EntityDef& e
 
             case PropertyType::BoolVector: decodeBoolVector(table, verifier, slot, prop.name, out); break;
             case PropertyType::ByteVector:
-                decodeNumericVector<int8_t>(table, verifier, slot, prop.name, out);
+                // Int128/Decimal128/Bson: opaque blob, hex string. Uuid:
+                // same, but grouped as a canonical UUID string. Anything
+                // else: a plain array of (signed unless UNSIGNED) bytes.
+                if (prop.externalType == ExternalPropertyType::Uuid) {
+                    decodeByteVectorAsBlobString(table, verifier, slot, prop.name, out, /*asUuid=*/true);
+                } else if (prop.externalType == ExternalPropertyType::Int128 ||
+                          prop.externalType == ExternalPropertyType::Decimal128 ||
+                          prop.externalType == ExternalPropertyType::Bson) {
+                    decodeByteVectorAsBlobString(table, verifier, slot, prop.name, out, /*asUuid=*/false);
+                } else if (prop.isUnsigned) {
+                    decodeNumericVector<uint8_t>(table, verifier, slot, prop.name, out);
+                } else {
+                    decodeNumericVector<int8_t>(table, verifier, slot, prop.name, out);
+                }
                 break;
             case PropertyType::ShortVector:
-                decodeNumericVector<int16_t>(table, verifier, slot, prop.name, out);
+                if (prop.isUnsigned) decodeNumericVector<uint16_t>(table, verifier, slot, prop.name, out);
+                else                 decodeNumericVector<int16_t>(table, verifier, slot, prop.name, out);
                 break;
             case PropertyType::CharVector:
                 decodeNumericVector<uint16_t>(table, verifier, slot, prop.name, out);
                 break;
             case PropertyType::IntVector:
-                decodeNumericVector<int32_t>(table, verifier, slot, prop.name, out);
+                if (prop.isUnsigned) decodeNumericVector<uint32_t>(table, verifier, slot, prop.name, out);
+                else                 decodeNumericVector<int32_t>(table, verifier, slot, prop.name, out);
                 break;
             case PropertyType::LongVector:
             case PropertyType::DateVector:
             case PropertyType::DateNanoVector:
-                decodeNumericVector<int64_t>(table, verifier, slot, prop.name, out);
+                if (prop.isUnsigned) decodeNumericVector<uint64_t>(table, verifier, slot, prop.name, out);
+                else                 decodeNumericVector<int64_t>(table, verifier, slot, prop.name, out);
                 break;
             case PropertyType::FloatVector:
                 decodeNumericVector<float>(table, verifier, slot, prop.name, out);

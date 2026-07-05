@@ -13,6 +13,7 @@
 #include "internal/schema.hpp"
 
 using ob_dump_internal::EntityDef;
+namespace ExternalPropertyType = ob_dump_internal::ExternalPropertyType;
 using ob_dump_internal::PropertyDef;
 using ob_dump_internal::PropertyType;
 using ob_dump_internal::decodeObject;
@@ -213,6 +214,74 @@ void testUnknownTypeIsSkipped() {
     std::puts("testUnknownTypeIsSkipped: OK");
 }
 
+// UNSIGNED (ObjectBox "flags" bit 8192) must flip decoding to the unsigned
+// variant of the same width — otherwise a genuinely-unsigned value large
+// enough to set the sign bit would print as a wrong, negative number.
+void testUnsignedIntegersDecodeCorrectly() {
+    flatbuffers::FlatBufferBuilder fbb;
+    auto ubyteVecOff = fbb.CreateVector<uint8_t>({200, 250});
+    auto start = fbb.StartTable();
+    fbb.AddElement<uint8_t>(slotFor(1), 200);                       // byteField: 200, not -56
+    fbb.AddElement<uint32_t>(slotFor(2), 3000000000u);              // intField: 3e9, not negative
+    fbb.AddElement<uint64_t>(slotFor(3), 10000000000000000000ULL);  // longField: > INT64_MAX
+    fbb.AddOffset(slotFor(4), ubyteVecOff);                         // byteVectorField
+    auto end = fbb.EndTable(start);
+    fbb.Finish(flatbuffers::Offset<flatbuffers::Table>(end));
+
+    EntityDef entity;
+    entity.entityId = 1;
+    entity.name     = "Unsigned";
+    entity.properties = {
+        {1, "byteField", PropertyType::Byte, true},
+        {2, "intField", PropertyType::Int, true},
+        {3, "longField", PropertyType::Long, true},
+        {4, "byteVectorField", PropertyType::ByteVector, true},
+    };
+
+    nlohmann::json j = decodeObject(fbb.GetBufferPointer(), fbb.GetSize(), entity);
+    assert(j.at("byteField").get<int>() == 200);
+    assert(j.at("intField").get<uint32_t>() == 3000000000u);
+    assert(j.at("longField").get<uint64_t>() == 10000000000000000000ULL);
+    assert((j.at("byteVectorField") == nlohmann::json::array({200, 250})));
+
+    std::puts("testUnsignedIntegersDecodeCorrectly: OK");
+}
+
+// ExternalPropertyType Uuid/Int128/Decimal128/Bson are all physically a
+// ByteVector on the wire but represent an opaque blob — decoded as a hex
+// string (Uuid additionally grouped into canonical 8-4-4-4-12 form) rather
+// than a JSON array of small integers.
+void testExternalTypeByteVectorsDecodeAsStrings() {
+    flatbuffers::FlatBufferBuilder fbb;
+    const std::vector<uint8_t> uuidBytes = {
+        0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4,
+        0xa7, 0x16, 0x44, 0x66, 0x55, 0x44, 0x00, 0x00,
+    };
+    const std::vector<uint8_t> blobBytes = {0xde, 0xad, 0xbe, 0xef};
+    auto uuidOff = fbb.CreateVector<uint8_t>(uuidBytes);
+    auto blobOff = fbb.CreateVector<uint8_t>(blobBytes);
+
+    auto start = fbb.StartTable();
+    fbb.AddOffset(slotFor(1), uuidOff);
+    fbb.AddOffset(slotFor(2), blobOff);
+    auto end = fbb.EndTable(start);
+    fbb.Finish(flatbuffers::Offset<flatbuffers::Table>(end));
+
+    EntityDef entity;
+    entity.entityId = 1;
+    entity.name     = "ExternalTypes";
+    entity.properties = {
+        {1, "uuidField", PropertyType::ByteVector, false, ExternalPropertyType::Uuid},
+        {2, "int128Field", PropertyType::ByteVector, false, ExternalPropertyType::Int128},
+    };
+
+    nlohmann::json j = decodeObject(fbb.GetBufferPointer(), fbb.GetSize(), entity);
+    assert(j.at("uuidField").get<std::string>() == "550e8400-e29b-41d4-a716-446655440000");
+    assert(j.at("int128Field").get<std::string>() == "deadbeef");
+
+    std::puts("testExternalTypeByteVectorsDecodeAsStrings: OK");
+}
+
 // A truncated/corrupted buffer must be caught by flatbuffers::Verifier and
 // surfaced as an exception, never read out of bounds.
 void testCorruptBufferThrows() {
@@ -246,6 +315,8 @@ int main() {
     testAbsentFieldIsOmitted();
     testEmptyVectorIsPresentNotOmitted();
     testUnknownTypeIsSkipped();
+    testUnsignedIntegersDecodeCorrectly();
+    testExternalTypeByteVectorsDecodeAsStrings();
     testCorruptBufferThrows();
     std::puts("fb_decode_test: OK");
     return 0;

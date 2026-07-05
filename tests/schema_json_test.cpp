@@ -13,7 +13,9 @@ static const char* kSampleModel = R"({
       "properties": [
         {"id": "1:1", "name": "id", "type": 6},
         {"id": "2:2", "name": "name", "type": 9},
-        {"id": "18:4", "name": "isFactory", "type": 1}
+        {"id": "18:4", "name": "isFactory", "type": 1},
+        {"id": "19:5", "name": "unsignedCount", "type": 6, "flags": 8192},
+        {"id": "20:6", "name": "externalId", "type": 23, "externalType": 102}
       ]
     },
     {
@@ -37,17 +39,28 @@ int main() {
     const auto& ammo = j.at("entities").at(0);
     assert(ammo.at("entityId").get<int>() == 1);
     assert(ammo.at("name").get<std::string>() == "Ammo");
-    assert(ammo.at("properties").size() == 3);
+    assert(ammo.at("properties").size() == 5);
 
     const auto& nameProp = ammo.at("properties").at(1);
     assert(nameProp.at("id").get<int>() == 2);
     assert(nameProp.at("name").get<std::string>() == "name");
     assert(nameProp.at("type").get<std::string>() == "String");
     assert(nameProp.at("vtableSlot").get<int>() == 4 + (2 - 1) * 2);
+    // Not notable — "unsigned"/"externalType" must be absent, not "false"/null.
+    assert(!nameProp.contains("unsigned"));
+    assert(!nameProp.contains("externalType"));
 
     const auto& gappedProp = ammo.at("properties").at(2);
     assert(gappedProp.at("id").get<int>() == 18);
     assert(gappedProp.at("vtableSlot").get<int>() == 4 + (18 - 1) * 2);
+
+    const auto& unsignedProp = ammo.at("properties").at(3);
+    assert(unsignedProp.at("name").get<std::string>() == "unsignedCount");
+    assert(unsignedProp.at("unsigned").get<bool>() == true);
+
+    const auto& externalProp = ammo.at("properties").at(4);
+    assert(externalProp.at("name").get<std::string>() == "externalId");
+    assert(externalProp.at("externalType").get<std::string>() == "Uuid");
 
     assert(j.at("entities").at(1).at("name").get<std::string>() == "Weapon");
 
