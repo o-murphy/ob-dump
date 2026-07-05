@@ -298,6 +298,22 @@ decoder's output exactly.
     without a usable LMDB binding, where FFI to the C core would still be
     the fallback.
 
+    **Why `readObjectBoxRecords` also copies `lock.mdb`, not just
+    `data.mdb`:** `lock.mdb` isn't part of the data at all — it's LMDB's own
+    coordination file, holding (a) the mutex enforcing a single active
+    write transaction, and (b) a reader table (PID + which MVCC snapshot
+    each active reader holds), so a writer knows which old pages a reader
+    might still reference and can't reclaim yet. Neither matters for us:
+    we're always the only reader, on a disposable copy, never concurrent
+    with the original app. The only reason a write-capable transaction (and
+    therefore a lock file) is needed at all is `dart_lmdb2`'s own dbi-handle
+    registration requirement (see above) — not anything intrinsic to
+    reading. If `lock.mdb` doesn't exist in the source directory, that's
+    fine as-is (`readObjectBoxRecords` only copies it `if` present); LMDB
+    just creates a fresh, valid one in the temp copy on open. Copying the
+    original when present is closer to "faithfully mirror the source
+    directory" than a hard requirement.
+
     <details><summary>Original plan (superseded for Dart, kept for context)</summary>
 
     Thin wrappers per target language calling the C ABI directly, starting
@@ -360,3 +376,23 @@ decoder's output exactly.
       the C++ core's dependencies are pinned via `GIT_TAG` in the root
       `CMakeLists.txt`'s `FetchContent_Declare` calls — Dependabot has no
       CMake/FetchContent ecosystem, so those stay manually bumped.
+14. **`build_runner` codegen on top of this toolkit** (future, speculative —
+    not scoped or started, captured here so the idea isn't lost). The
+    README "Building your own reader in another language" workflow is
+    already fully scriptable: `ob_dump --schema`/`--fbs` → `flatc --dart` →
+    hand-write the `entityId` dispatch. A `build_runner` `Builder` package
+    could automate the whole thing for a Dart project: given
+    `objectbox-model.json` as an input asset, shell out to `ob_dump --fbs`
+    and `flatc --dart`, then generate a small dispatch entrypoint (e.g. a
+    `switch (entityId) { case ammoId: return AmmoReader(...); ... }`) as one
+    `<name>.g.dart` output — turning today's five manual steps into one
+    `dart run build_runner build`. Would need: deciding whether `ob_dump`/
+    `flatc` are expected as pre-installed system binaries or fetched by the
+    builder itself (the latter is friendlier but reintroduces a
+    build-time-network-fetch question similar to this project's own
+    `FetchContent` tradeoffs — see "Design decisions" above); and a real
+    Dart project to validate the generated dispatch code against, not just
+    the raw `flatc` output already verified. Not needed unless someone
+    other than ebalistyka's one-time migration actually wants this —
+    ebalistyka's own use is a single run, where the manual workflow is
+    already fine.

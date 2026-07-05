@@ -22,20 +22,26 @@ ob_dump --fbs    objectbox-model.json -o schema.fbs
 
 # 2. Generate typed Dart classes with the *official* FlatBuffers compiler.
 #    (This is `flatc`, not `flatcc` — flatcc is a separate, C-only
-#    implementation with no Dart backend.)
+#    implementation with no Dart backend.) flatc always names its output
+#    `<input>_generated.dart`; rename to the `.g.dart` suffix Dart tooling
+#    conventionally uses for generated code (e.g. so a `*.g.dart` entry in
+#    .gitignore or an analyzer exclusion rule already covers it).
 flatc --dart -o lib/generated schema.fbs
+mv lib/generated/schema_generated.dart lib/generated/schema.g.dart
 ```
 
 ```dart
 import 'package:ob_dump_reader/ob_dump_reader.dart';
-import 'generated/schema_generated.dart'; // from flatc --dart
+import 'generated/schema.g.dart'; // from flatc --dart, see step 2 above
 
 const ammoEntityId = 1; // from schema.json
 
 Future<void> main() async {
+  // Walks data.mdb, calling this callback once per stored ObjectBox object
+  // with its raw (still-undecoded) FlatBuffers bytes — see [ObRecord].
   await readObjectBoxRecords('/path/to/objectbox/dir', (record) {
     if (record.entityId == ammoEntityId) {
-      final ammo = Ammo(record.data); // flatc-generated class
+      final ammo = Ammo(record.data); // flatc-generated class decodes the bytes
       print('${ammo.name}: ${ammo.bcG1}');
       // ... insert into whatever your new database is.
     }
@@ -50,7 +56,8 @@ needed because opening an ObjectBox store requires one write-capable LMDB
 transaction (nothing is actually written, just an internal handle
 registration), and doing that against a live database risks colliding with
 a running ObjectBox process. That copy costs disk I/O/space proportional to
-the database size.
+the database size. (`lock.mdb` itself is just LMDB's coordination file, not
+data — see `docs/BACKLOG.md` phased-plan item 10 for why we copy it anyway.)
 
 If you know the source isn't in use by anything else and skipping that cost
 matters (a large database), use `readObjectBoxRecordsUnsafe` instead — same
