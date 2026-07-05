@@ -104,10 +104,17 @@ ebalistyka's real schema — confirmed via a scan of every entity in
   all). Needs its own walk once we have a real schema that uses one.
 - **`Flex` properties** — dynamic property stored as an embedded FlexBuffers
   blob (a different encoding from the table-based FlatBuffers we decode).
-- Remaining scalar/vector `PropertyType` codes ObjectBox defines but that don't
-  appear in ebalistyka's schema (`int`/`short`/`byte`/`char`/`float32` and
-  their vector forms, `ByteVector`, `StringIdVector`). Add as encountered —
-  the slot-lookup mechanism is generic, only the per-type reader is missing.
+- Remaining `PropertyType` codes ObjectBox defines but that don't appear in
+  ebalistyka's schema (full list from the official `objectbox` Dart package,
+  `lib/src/modelinfo/enums.dart` — the authoritative source, not guessed):
+  scalars `Byte`(2), `Short`(3), `Char`(4), `Int`(5), `Float`(7), `Date`(10),
+  `DateNano`(12), `Flex`(13); vectors `BoolVector`(22), `ByteVector`(23),
+  `ShortVector`(24), `CharVector`(25), `IntVector`(26), `LongVector`(27),
+  `FloatVector`(28), `DateVector`(31), `DateNanoVector`(32). Add as
+  encountered — the slot-lookup mechanism is generic, only the per-type
+  reader is missing. Also out of scope: the newer `ExternalPropertyType`
+  annotation layer (`int128`, `uuid`, `decimal128`, `flexMap`, `flexVector`,
+  `json`, `bson`, `javaScript`) that can sit on top of a base property type.
 - Big-endian host support (FlatBuffers is always little-endian on disk;
   reading on a BE host needs an explicit byteswap we haven't added).
 - Windows/macOS build coverage (Linux-first, matching ebalistyka's own

@@ -12,7 +12,11 @@ namespace ob_dump_internal {
 // See docs/BACKLOG.md "Scope" for what's implemented vs. explicitly deferred.
 enum class PropertyType : int {
     Bool          = 1,
-    Long          = 6,  // int64 / Date (ms since epoch)
+    Long          = 6,  // int64. NOT the same code as ObjectBox's dedicated
+                        // `Date` type (10, also int64 on the wire) — that
+                        // type isn't used anywhere in ebalistyka's current
+                        // schema and isn't implemented here; see
+                        // docs/BACKLOG.md "Explicitly out of scope".
     Double        = 8,
     String        = 9,
     Relation      = 11, // ToOne, stored as int64 fk
