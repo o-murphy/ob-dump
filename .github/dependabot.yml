@@ -1,0 +1,30 @@
+version: 2
+updates:
+  # dart/ob_dump_reader's one real dependency (dart_lmdb2) and dev
+  # dependencies (test, flat_buffers).
+  - package-ecosystem: "pub"
+    directory: "/dart"
+    schedule:
+      interval: "weekly"
+    groups:
+      flutter-updates:
+        patterns:
+          - "flutter*"
+        update-types:
+          - "minor"
+          - "patch"
+  
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # NOTE: the C++ core's dependencies (lmdb, flatbuffers, nlohmann/json) are
+  # pinned via `GIT_TAG` in the root CMakeLists.txt's FetchContent_Declare
+  # calls — Dependabot has no "cmake"/FetchContent ecosystem, so those
+  # version bumps stay manual. Add a `github-actions` entry here once this
+  # repo has workflows under .github/workflows/.

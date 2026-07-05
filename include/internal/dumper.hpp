@@ -1,6 +1,8 @@
 #ifndef OB_DUMP_INTERNAL_DUMPER_HPP
 #define OB_DUMP_INTERNAL_DUMPER_HPP
 
+#include <cstdint>
+#include <functional>
 #include <string>
 
 namespace ob_dump_internal {
@@ -13,9 +15,30 @@ namespace ob_dump_internal {
 // tools/ob_migration_poc/bin/export_json.dart in the ebalistyka repo this
 // was ported from.
 //
+// Builds the entire result in memory before returning it — see
+// dumpStreaming for a variant that doesn't, for large databases.
+//
 // Throws std::runtime_error on any failure (bad schema, bad LMDB store, or
 // a corrupted record caught by fb_decode's Verifier checks).
 std::string dumpToJson(const std::string& mdbPath, const std::string& modelJson);
+
+// Called once per decoded record: entity name, object id, and a JSON object
+// of that record's fields (same shape as one element of dumpToJson's
+// per-entity arrays, including "id"). Return true to keep iterating, false
+// to stop early (not an error).
+using RecordCallback =
+    std::function<bool(const std::string& entityName, uint32_t objectId, const std::string& fieldsJson)>;
+
+// Streaming variant of dumpToJson: invokes `callback` once per decoded
+// record instead of accumulating the whole database as one in-memory JSON
+// tree — use this for large databases where dumpToJson's memory footprint
+// (proportional to total data size) isn't acceptable. LMDB access itself is
+// already lazy/paged regardless of which of these two is used; this only
+// changes whether *decoded* records get accumulated.
+//
+// Same throwing behavior as dumpToJson.
+void dumpStreaming(const std::string& mdbPath, const std::string& modelJson,
+                   const RecordCallback& callback);
 
 }  // namespace ob_dump_internal
 

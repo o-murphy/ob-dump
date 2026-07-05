@@ -55,25 +55,66 @@ const int _keyTypeData = 0x18;
 /// [objectboxDir] (a directory containing `data.mdb`, optionally
 /// `lock.mdb`), invoking [onRecord] once per record.
 ///
-/// Always works on a temporary copy of the database, never the original
-/// files directly: `dart_lmdb2` needs one write-capable transaction (just to
+/// Works on a temporary copy of the database, never the original files
+/// directly: `dart_lmdb2` needs one write-capable transaction (just to
 /// register the root db handle, nothing is actually mutated) to open an
 /// ObjectBox store, and doing that against a live database risks colliding
-/// with a running ObjectBox process or a read-only source location.
+/// with a running ObjectBox process or a read-only source location. This
+/// copy costs disk I/O and temporary space proportional to the database
+/// size — for a large database where that's unwelcome, and you're sure the
+/// source is safe to open directly (nothing else has it open, and it's on
+/// writable storage), see [readObjectBoxRecordsUnsafe].
 Future<void> readObjectBoxRecords(
   String objectboxDir,
   void Function(ObRecord record) onRecord,
-) async {
-  final tmp = Directory.systemTemp.createTempSync('ob_dump_reader_');
+) {
+  return _readObjectBoxRecords(objectboxDir, onRecord, copyToTemp: true);
+}
+
+/// Same as [readObjectBoxRecords], but skips the safety copy and opens
+/// [objectboxDir] directly.
+///
+/// **Unsafe**: this still opens a write-capable LMDB transaction against
+/// `objectboxDir` (see [readObjectBoxRecords] for why — nothing is actually
+/// written, but the env must be opened write-capable regardless). Against
+/// the *original* files instead of a disposable copy, that means:
+/// - if anything else (e.g. a running ObjectBox-using app) has the database
+///   open at the same time, you risk lock contention or reading a torn page
+///   from a concurrent write;
+/// - the location must be on writable storage, or opening will fail outright.
+///
+/// Only reach for this once you know the source isn't in use by anything
+/// else (e.g. the owning app is fully closed) — the payoff is skipping a
+/// full copy of `data.mdb`/`lock.mdb`, which matters mainly for large
+/// databases.
+Future<void> readObjectBoxRecordsUnsafe(
+  String objectboxDir,
+  void Function(ObRecord record) onRecord,
+) {
+  return _readObjectBoxRecords(objectboxDir, onRecord, copyToTemp: false);
+}
+
+Future<void> _readObjectBoxRecords(
+  String objectboxDir,
+  void Function(ObRecord record) onRecord, {
+  required bool copyToTemp,
+}) async {
+  final tmp = copyToTemp
+      ? Directory.systemTemp.createTempSync('ob_dump_reader_')
+      : null;
+  final dbDir = tmp?.path ?? objectboxDir;
+
   try {
-    for (final name in ['data.mdb', 'lock.mdb']) {
-      final src = File('$objectboxDir/$name');
-      if (src.existsSync()) src.copySync('${tmp.path}/$name');
+    if (tmp != null) {
+      for (final name in ['data.mdb', 'lock.mdb']) {
+        final src = File('$objectboxDir/$name');
+        if (src.existsSync()) src.copySync('${tmp.path}/$name');
+      }
     }
 
     final db = LMDB();
     await db.init(
-      tmp.path,
+      dbDir,
       config: LMDBInitConfig(maxDbs: 4, mapSize: 512 * 1024 * 1024),
     );
 
@@ -107,7 +148,7 @@ Future<void> readObjectBoxRecords(
     await db.txnAbort(txn);
     db.close();
   } finally {
-    tmp.deleteSync(recursive: true);
+    tmp?.deleteSync(recursive: true);
   }
 }
 

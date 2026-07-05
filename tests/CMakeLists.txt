@@ -13,3 +13,7 @@ add_test(NAME schema_json_test COMMAND schema_json_test)
 add_executable(fbs_gen_test fbs_gen_test.cpp)
 target_link_libraries(fbs_gen_test PRIVATE ob_dump_core)
 add_test(NAME fbs_gen_test COMMAND fbs_gen_test)
+
+add_executable(dumper_stream_test dumper_stream_test.cpp)
+target_link_libraries(dumper_stream_test PRIVATE ob_dump_core)
+add_test(NAME dumper_stream_test COMMAND dumper_stream_test)

@@ -44,7 +44,11 @@ public:
     // no matching entity in the schema are silently skipped by the caller,
     // not here — this layer only parses the key format, it knows nothing
     // about the schema.
-    void forEachObject(const std::function<void(const ObjectRecord&)>& cb) const;
+    //
+    // cb returns true to keep iterating, false to stop early — used by
+    // streaming consumers (see dumper.hpp's dumpStreaming) that may want to
+    // bail out before walking a large database to completion.
+    void forEachObject(const std::function<bool(const ObjectRecord&)>& cb) const;
 
 private:
     MDB_env* env_ = nullptr;

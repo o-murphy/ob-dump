@@ -43,6 +43,20 @@ Future<void> main() async {
 }
 ```
 
+## Copy-free reads (large databases)
+
+`readObjectBoxRecords` works on a temporary copy of `data.mdb`/`lock.mdb` —
+needed because opening an ObjectBox store requires one write-capable LMDB
+transaction (nothing is actually written, just an internal handle
+registration), and doing that against a live database risks colliding with
+a running ObjectBox process. That copy costs disk I/O/space proportional to
+the database size.
+
+If you know the source isn't in use by anything else and skipping that cost
+matters (a large database), use `readObjectBoxRecordsUnsafe` instead — same
+signature, no copy, reads `objectboxDir` directly. See its doc comment for
+the exact risk before reaching for it.
+
 ## Why this shape
 
 The alternative — an FFI wrapper around `ob-dump`'s C++ core — would mean

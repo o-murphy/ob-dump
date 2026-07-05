@@ -319,3 +319,27 @@ decoder's output exactly.
     `mdb_env_open` directly. On Linux, back it with `memfd_create` + one
     `write()` so LMDB still mmaps a real fd without touching disk — the
     closest practical approximation to zero-copy for this input mode.
+13. **Streaming API + unsafe Dart variant + Dependabot** — done, in response
+    to a large-database concern raised about item 10:
+    - `LmdbReader::forEachObject`'s callback now returns `bool` (continue/
+      stop) instead of `void`, so a streaming consumer can bail out early.
+    - New `dumpStreaming()` (internal) / `ob_dump_stream()` (public C API):
+      invokes a callback once per decoded record instead of building the
+      whole database as one in-memory JSON tree first — `ob_dump()`/
+      `dumpToJson()` still do that, and remain the simple default. Verified
+      against the real ebalistyka database via the built `.so` directly
+      (12 records, same field values as every earlier verification).
+      Covered by `tests/dumper_stream_test.cpp` (a hand-built minimal
+      FlatBuffers table + raw `mdb_put` fixture — all-records-in-order and
+      early-stop cases).
+    - Dart's `readObjectBoxRecords` already streamed by design (per-record
+      callback during the cursor walk, nothing accumulated) — the actual
+      cost for large databases there is the safety copy of
+      `data.mdb`/`lock.mdb` before opening. Added
+      `readObjectBoxRecordsUnsafe` (same signature, no copy, reads the
+      given directory directly) for callers who know the source isn't in
+      use by anything else and want to skip that cost.
+    - Added `.github/dependabot.yml` (`pub` ecosystem for `dart/`). Note:
+      the C++ core's dependencies are pinned via `GIT_TAG` in the root
+      `CMakeLists.txt`'s `FetchContent_Declare` calls — Dependabot has no
+      CMake/FetchContent ecosystem, so those stay manually bumped.

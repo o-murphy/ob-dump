@@ -88,4 +88,26 @@ Future<void> main() async {
     expect(dataFile.existsSync(), isTrue);
     expect(dataFile.statSync().size, sizeBefore);
   });
+
+  test('readObjectBoxRecordsUnsafe reads the directory directly', () async {
+    final srcDir = Directory.systemTemp.createTempSync('ob_dump_reader_fixture_');
+    addTearDown(() => srcDir.deleteSync(recursive: true));
+
+    final db = LMDB();
+    await db.init(srcDir.path, config: LMDBInitConfig(maxDbs: 4, mapSize: 64 * 1024 * 1024));
+    final txn = await db.txnStart();
+    final cursor = await db.cursorOpen(txn);
+    await db.cursorPut(cursor, _dataKey(1, 1), [7, 8, 9], 0);
+    db.cursorClose(cursor);
+    await db.txnCommit(txn);
+    db.close();
+
+    final found = <ObRecord>[];
+    await readObjectBoxRecordsUnsafe(srcDir.path, found.add);
+
+    expect(found, hasLength(1));
+    expect(found[0].entityId, 1);
+    expect(found[0].objectId, 1);
+    expect(found[0].data, [7, 8, 9]);
+  });
 }

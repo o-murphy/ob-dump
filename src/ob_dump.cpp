@@ -63,6 +63,39 @@ char* ob_dump(const ObDumpSource* source, const char* model_json) {
     return runCatchingErrors([&] { return ob_dump_internal::dumpToJson(path, model_json); });
 }
 
+int ob_dump_stream(const ObDumpSource* source, const char* model_json,
+                   ObDumpRecordCallback callback, void* user_data) {
+    if (source == nullptr || model_json == nullptr || callback == nullptr) {
+        g_lastError = "ob_dump_stream: source, model_json, and callback must not be null";
+        return -1;
+    }
+    if (source->kind != OB_DUMP_SOURCE_PATH) {
+        g_lastError =
+            "ob_dump_stream: OB_DUMP_SOURCE_BUFFER is not implemented yet (see docs/BACKLOG.md)";
+        return -1;
+    }
+    if (source->as.path == nullptr) {
+        g_lastError = "ob_dump_stream: source path must not be null";
+        return -1;
+    }
+
+    try {
+        ob_dump_internal::dumpStreaming(
+            source->as.path, model_json,
+            [&](const std::string& entityName, uint32_t objectId, const std::string& fieldsJson) -> bool {
+                return callback(entityName.c_str(), static_cast<int64_t>(objectId),
+                                fieldsJson.c_str(), user_data) == 0;
+            });
+        return 0;
+    } catch (const std::exception& e) {
+        g_lastError = e.what();
+        return -1;
+    } catch (...) {
+        g_lastError = "ob_dump_stream: unknown error";
+        return -1;
+    }
+}
+
 char* ob_dump_schema(const char* model_json) {
     if (model_json == nullptr) {
         g_lastError = "ob_dump_schema: model_json must not be null";

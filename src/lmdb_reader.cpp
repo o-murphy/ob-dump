@@ -86,7 +86,7 @@ LmdbReader::~LmdbReader() {
     }
 }
 
-void LmdbReader::forEachObject(const std::function<void(const ObjectRecord&)>& cb) const {
+void LmdbReader::forEachObject(const std::function<bool(const ObjectRecord&)>& cb) const {
     MDB_cursor* cursor = nullptr;
     check(mdb_cursor_open(txn_, static_cast<MDB_dbi>(dbi_), &cursor), "mdb_cursor_open");
 
@@ -102,7 +102,7 @@ void LmdbReader::forEachObject(const std::function<void(const ObjectRecord&)>& c
             rec.objectId = readUint32BE(keyBytes + 4);
             rec.data     = static_cast<const uint8_t*>(val.mv_data);
             rec.size     = val.mv_size;
-            cb(rec);
+            if (!cb(rec)) break;  // early stop requested
         }
         // kKeyTypeSchema / kKeyTypeIndex / anything else: not object data,
         // nothing for this layer to do with it.

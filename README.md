@@ -79,6 +79,28 @@ char* schema = ob_dump_schema(model_json_contents);
 char* fbs    = ob_dump_fbs(model_json_contents);
 ```
 
+For large databases, `ob_dump()` isn't ideal — it builds the entire result
+in memory before returning it. `ob_dump_stream()` invokes a callback once
+per decoded record instead:
+
+```c
+int on_record(const char* entity_name, int64_t object_id,
+             const char* fields_json, void* user_data) {
+    printf("%s#%lld: %s\n", entity_name, (long long)object_id, fields_json);
+    return 0; // non-zero stops iteration early (not an error)
+}
+
+int rc = ob_dump_stream(&source, model_json_contents, on_record, NULL);
+if (rc != 0) fprintf(stderr, "error: %s\n", ob_dump_last_error());
+```
+
+## Dart
+
+[`dart/`](dart) is a separate, standalone pub.dev package
+([`ob_dump_reader`](dart/README.md)) for reading an ObjectBox database
+directly from Dart — deliberately *not* an FFI binding to this C++ core. See
+its own README and `docs/BACKLOG.md` (phased-plan item 10) for why.
+
 ## Scope
 
 Reads all 20 non-`Flex` ObjectBox `PropertyType` codes: every fixed-width
