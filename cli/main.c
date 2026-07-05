@@ -80,7 +80,53 @@ static int run_schema_or_fbs(int argc, char** argv, int is_schema) {
     return write_result_and_free(result, out_path);
 }
 
+// Bracket-management state for streaming --json output. LMDB sorts keys
+// byte-for-byte, and entity_id is the byte that determines order among
+// object-data keys (everything before it is constant) — so a plain forward
+// cursor walk already visits every record of one entity contiguously,
+// grouped by ascending entity_id, before moving to the next. That's what
+// makes writing valid grouped JSON incrementally possible at all: we never
+// need to look ahead or buffer more than "did the entity change since the
+// last record" (see docs/BACKLOG.md for the key format this relies on).
+typedef struct {
+    FILE* out;
+    char lastEntity[256];
+    int wroteAnyEntity;
+    int wroteAnyInCurrentEntity;
+} JsonStreamCtx;
+
+static int json_stream_cb(const char* entity_name, int64_t object_id,
+                          const char* fields_json, void* user_data) {
+    JsonStreamCtx* ctx = (JsonStreamCtx*)user_data;
+    (void)object_id;
+
+    int isNewEntity = ctx->lastEntity[0] == '\0' || strcmp(ctx->lastEntity, entity_name) != 0;
+    if (isNewEntity) {
+        if (ctx->wroteAnyEntity) {
+            fputs("\n  ],\n", ctx->out);
+        } else {
+            fputs("{\n", ctx->out);
+        }
+        fprintf(ctx->out, "  \"%s\": [\n", entity_name);
+        strncpy(ctx->lastEntity, entity_name, sizeof(ctx->lastEntity) - 1);
+        ctx->lastEntity[sizeof(ctx->lastEntity) - 1] = '\0';
+        ctx->wroteAnyEntity = 1;
+        ctx->wroteAnyInCurrentEntity = 0;
+    }
+
+    if (ctx->wroteAnyInCurrentEntity) fputs(",\n", ctx->out);
+    fprintf(ctx->out, "    %s", fields_json);
+    ctx->wroteAnyInCurrentEntity = 1;
+
+    return 0;  /* keep going */
+}
+
 // --json: two positional args (mdb path, model path) + optional `-o out`.
+// Streams the dump via ob_dump_stream() rather than ob_dump(): memory use
+// stays O(1) per record instead of O(total data size), at the cost of each
+// record's own fields being written as one compact JSON line rather than
+// fully indented (ob_dump_stream() hands us each record pre-serialized —
+// see docs/BACKLOG.md).
 static int run_json(int argc, char** argv) {
     if (argc < 4) {
         print_usage(argv[0]);
@@ -99,18 +145,44 @@ static int run_json(int argc, char** argv) {
         return 1;
     }
 
+    FILE* out = stdout;
+    if (out_path != NULL) {
+        out = fopen(out_path, "wb");
+        if (out == NULL) {
+            fprintf(stderr, "error: cannot open output file: %s\n", out_path);
+            free(model_json);
+            return 1;
+        }
+    }
+
     ObDumpSource source;
     source.kind    = OB_DUMP_SOURCE_PATH;
     source.as.path = mdb_path;
 
-    char* result = ob_dump(&source, model_json);
+    JsonStreamCtx ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.out = out;
+
+    int rc = ob_dump_stream(&source, model_json, json_stream_cb, &ctx);
     free(model_json);
 
-    if (result == NULL) {
+    if (rc != 0) {
         fprintf(stderr, "error: %s\n", ob_dump_last_error());
+        if (ctx.wroteAnyEntity) {
+            fprintf(stderr, "note: partial output may already have been written\n");
+        }
+        if (out != stdout) fclose(out);
         return 1;
     }
-    return write_result_and_free(result, out_path);
+
+    if (ctx.wroteAnyEntity) {
+        fputs("\n  ]\n}\n", out);
+    } else {
+        fputs("{}\n", out);
+    }
+
+    if (out != stdout) fclose(out);
+    return 0;
 }
 
 int main(int argc, char** argv) {

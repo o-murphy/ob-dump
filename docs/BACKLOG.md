@@ -339,6 +339,23 @@ decoder's output exactly.
       `readObjectBoxRecordsUnsafe` (same signature, no copy, reads the
       given directory directly) for callers who know the source isn't in
       use by anything else and want to skip that cost.
+    - The CLI's `--json` mode now uses `ob_dump_stream()` internally instead
+      of `ob_dump()`, writing incrementally to stdout/`-o` file rather than
+      building the whole result in memory first — memory use is O(1) per
+      record, not O(total data size), with no opt-in flag needed. This is
+      possible without any lookahead/buffering because LMDB sorts keys
+      byte-for-byte and `entity_id` is the byte that determines order among
+      object-data keys (everything before it in the key is constant) — a
+      plain forward cursor walk already visits every record of one entity
+      contiguously before moving to the next, so "did the entity change
+      since the last record" is enough to know when to close/open the
+      `"EntityName": [...]` brackets. One visible tradeoff: each record's
+      fields are written as one compact JSON line (`ob_dump_stream()` hands
+      records already serialized) rather than fully indented like
+      `ob_dump()`'s output — still valid, readable JSON, just not
+      byte-identical formatting. Verified against real data (all 10
+      entities present, correct content) and an empty-database edge case
+      (`{}`).
     - Added `.github/dependabot.yml` (`pub` ecosystem for `dart/`). Note:
       the C++ core's dependencies are pinned via `GIT_TAG` in the root
       `CMakeLists.txt`'s `FetchContent_Declare` calls — Dependabot has no

@@ -46,7 +46,10 @@ build/ob_dump --fbs    <path/to/objectbox-model.json> [-o schema.fbs]
 }
 ```
 
-Entities with zero stored objects are omitted entirely.
+Entities with zero stored objects are omitted entirely. `--json` streams its
+output (memory use is O(1) per record, not O(total database size)) — see
+`docs/BACKLOG.md` phased-plan item 13 for why that's possible without any
+buffering/lookahead.
 
 The other two modes export the *schema*, not the data:
 
@@ -100,6 +103,40 @@ if (rc != 0) fprintf(stderr, "error: %s\n", ob_dump_last_error());
 ([`ob_dump_reader`](dart/README.md)) for reading an ObjectBox database
 directly from Dart — deliberately *not* an FFI binding to this C++ core. See
 its own README and `docs/BACKLOG.md` (phased-plan item 10) for why.
+
+## Building your own reader in another language
+
+[`dart/`](dart) (see above) is a worked example of a pattern that doesn't
+need any FFI binding to this C++ core at all, as long as *some* LMDB binding
+exists for your language (common — LMDB is a popular embedded store):
+
+1. **Get an LMDB binding for your language.** E.g. `dart_lmdb2` for Dart,
+   `py-lmdb` for Python, the `lmdb` crate for Rust, `lmdbjava` for the JVM.
+2. **Generate the schema artifacts from this project:**
+   ```sh
+   ob_dump --schema objectbox-model.json -o schema.json  # entityId -> name/shape
+   ob_dump --fbs    objectbox-model.json -o schema.fbs   # FlatBuffers IDL
+   ```
+3. **Generate a typed decoder with the official FlatBuffers compiler:**
+   `flatc --<your-language> schema.fbs` (not `flatcc` — that's a separate,
+   C-only implementation with no backend for most languages). This gives
+   you correct, officially-generated code for the one genuinely fiddly part
+   (FlatBuffers vtable/type decoding) — see `docs/BACKLOG.md` "Schema
+   export" for exactly what this does and doesn't replace.
+4. **Implement the LMDB walk + ObjectBox key parsing** — the only part
+   that's actually yours to write, and it's small: open `data.mdb`
+   read-only, cursor-walk the root/unnamed database (ObjectBox never uses
+   named sub-databases), and for each entry whose 8-byte key's first byte
+   is `0x18` (object data — `0x00` is a schema entry, `0x20` an index
+   entry), the value is one record's raw FlatBuffers table bytes, and:
+   - `entity_id = key[3] / 4`
+   - `object_id = key[4..7]` as a big-endian uint32
+   `dart/lib/ob_dump_reader.dart` is a complete, working reference
+   implementation of exactly this (~60 lines) — port it rather than
+   starting from scratch.
+5. Dispatch on `entity_id` (via `schema.json`) to pick the right
+   `flatc`-generated type, decode, and do whatever you need with the result
+   (insert into a new database, etc).
 
 ## Scope
 
