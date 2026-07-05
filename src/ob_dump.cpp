@@ -14,7 +14,7 @@
 // overridden by the release workflow from the git tag) — this fallback is
 // only for compiling this file outside that build system.
 #ifndef OB_DUMP_VERSION
-#define OB_DUMP_VERSION "0.1.0-dev"
+#define OB_DUMP_VERSION "0.1.0-alpha.0"
 #endif
 
 namespace {

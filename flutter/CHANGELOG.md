@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-07-06
+## [0.1.0-alpha.0] - 2026-07-06
 
 ### Added
 
@@ -15,5 +15,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `flutter_lmdb2` instead of `dart_lmdb2` so Flutter's plugin tooling
   properly bundles the native LMDB library on Android/iOS/macOS.
 
-[Unreleased]: https://github.com/o-murphy/ob-dump/compare/flutter-v0.1.0...HEAD
-[0.1.0]: https://github.com/o-murphy/ob-dump/releases/tag/flutter-v0.1.0
+[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.0...HEAD
+[0.1.0-alpha.0]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.0
