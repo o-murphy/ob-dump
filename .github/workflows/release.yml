@@ -101,6 +101,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dart-lang/setup-dart@v1
       - run: dart pub get
+      # dart_lmdb2 ships prebuilt native libraries but doesn't fetch them on
+      # `pub get` — required before first use, per its README (same step
+      # already in dart.yml; missed here — caught by an actual failed run,
+      # not proactively).
+      - run: dart run dart_lmdb2:fetch_native
       - run: dart analyze
       - run: dart test
 
