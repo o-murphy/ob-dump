@@ -14,6 +14,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # TODO(release): path dep only works pre-publish (also why `flutter
+  # analyze` reports one "path dependencies aren't publishable" warning).
+  # Before actually publishing this package, replace with a real version
+  # constraint on ob_dump_reader from pub.dev, e.g. `^<matching version>`
+  # — see docs/BACKLOG.md phased-plan item 17/18 for the release process
+  # (both packages' versions must stay in lockstep; CI enforces this).
   ob_dump_reader:
     path: ../dart
   flutter_lmdb2: ^0.9.5

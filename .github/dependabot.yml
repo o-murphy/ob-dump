@@ -14,6 +14,14 @@ updates:
           - "minor"
           - "patch"
   
+  # flutter/ob_dump_reader_flutter's dependencies: ob_dump_reader (path dep,
+  # not tracked by Dependabot) and flutter_lmdb2 — the one that actually
+  # matters here, since it's what pulls in the native plugin bundling.
+  - package-ecosystem: "pub"
+    directory: "/flutter"
+    schedule:
+      interval: "weekly"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

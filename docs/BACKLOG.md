@@ -226,7 +226,17 @@ decoder's output exactly.
   FlatBuffers we decode; would need its own recursive decoder, not just
   another `switch` branch). Deliberately excluded from the "cover every
   remaining type" pass — different enough in kind to warrant its own scoped
-  effort rather than being bundled in.
+  effort rather than being bundled in. **Needs zero new dependencies**:
+  `flexbuffers.h` ships inside the same `google/flatbuffers` repo this
+  project already `FetchContent`s (confirmed present in the vendored
+  source, not assumed) — header-only, same as everything else we use from
+  it. The wire representation is just the property's `ByteVector` bytes
+  handed to `flexbuffers::GetRoot(data, size)`, which returns a
+  self-describing `Reference` (`IsMap`/`IsVector`/`IsString`/`IsBool`/
+  `IsNumeric` + matching `As*()` accessors) — a recursive
+  `Reference -> nlohmann::json` converter is the same shape and rough size
+  (~50-100 lines) as the rest of this decoder. Not started; still its own
+  scoped effort, just a cheap one whenever it's prioritized.
 - **`ExternalPropertyType` — partially implemented.** This is a semantic
   annotation *on top of* a base `PropertyType` (the `"externalType"` field
   on a property in model.json, numeric codes from the official `objectbox`
@@ -526,3 +536,28 @@ decoder's output exactly.
     actually published. `.github/workflows/flutter.yml` added (3-OS
     matrix, `flutter pub get` + `flutter analyze`) — same "not run on a
     real remote yet" caveat as item 15 applies here too.
+18. **Release process: keeping `dart/` and `flutter/` versions in lockstep**
+    — done (the convention + a CI check; not an actual release, there
+    hasn't been one yet). Since `flutter/` is purely a re-export of `dart/`,
+    there's no reason for their version numbers to ever diverge — so the
+    rule is: **always bump both `pubspec.yaml`s together, to the same
+    version, in the same commit**, and tag both
+    (`dart-vX.Y.Z`/`flutter-vX.Y.Z` — matches the tag URLs already written
+    into both `CHANGELOG.md`s' link references). Added
+    `.github/workflows/version-parity.yml`: a single cheap job (no OS
+    matrix needed) that greps both `pubspec.yaml`s' `version:` line and
+    fails the build with an explicit `::error::` message the moment they
+    differ — verified locally (`0.1.0` == `0.1.0` today) before adding the
+    CI check. This turns "remember to keep them in sync" from a purely
+    manual discipline into something CI actually enforces.
+
+    Also flagged inline, not just here: `flutter/pubspec.yaml`'s
+    `ob_dump_reader: path: ../dart` dependency has a `TODO(release)`
+    comment marking it as the thing that must change (to a real pub.dev
+    version constraint) before `flutter/` can actually be published —
+    that's also what's causing today's one `flutter analyze` warning (see
+    item 17). Actual release steps, for whenever that happens: (1) decide
+    the version, (2) bump both `pubspec.yaml`s + both `CHANGELOG.md`s,
+    (3) publish `ob_dump_reader` to pub.dev first, (4) update `flutter/`'s
+    path dep to that published version, (5) publish
+    `ob_dump_reader_flutter`, (6) tag both.

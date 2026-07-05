@@ -1,0 +1,26 @@
+name: Package version parity
+
+# ob_dump_reader (dart/) and ob_dump_reader_flutter (flutter/) are meant to
+# be released in lockstep — flutter/ is just a thin re-export of dart/, so
+# there's no reason for their version numbers to ever diverge. This is a
+# cheap, single-run check (no OS matrix needed) that fails loudly the
+# moment one gets bumped without the other, rather than only being noticed
+# at actual release time.
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compare dart/pubspec.yaml and flutter/pubspec.yaml versions
+        run: |
+          dart_version=$(grep -m1 '^version:' dart/pubspec.yaml | awk '{print $2}')
+          flutter_version=$(grep -m1 '^version:' flutter/pubspec.yaml | awk '{print $2}')
+          echo "dart/pubspec.yaml version:    $dart_version"
+          echo "flutter/pubspec.yaml version: $flutter_version"
+          if [ "$dart_version" != "$flutter_version" ]; then
+            echo "::error::Version mismatch: dart/ is $dart_version but flutter/ is $flutter_version — bump both together."
+            exit 1
+          fi
