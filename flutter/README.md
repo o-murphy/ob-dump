@@ -5,69 +5,44 @@
 
 
 Same API as [`ob_dump_reader`](../dart) — `readObjectBoxRecords`,
-`readObjectBoxRecordsUnsafe`, `ObRecord` — re-exported unchanged. Use
-**this** package (not `ob_dump_reader` directly) from inside a Flutter app;
-use `ob_dump_reader` directly for plain Dart (CLI scripts, server, tests).
+`ObRecord`, `readToManyTargets`, and the `Flex`/`ExternalPropertyType`
+decode helpers — re-exported unchanged. Use **this** package (not
+`ob_dump_reader` directly) from inside a Flutter app; use `ob_dump_reader`
+directly for plain Dart (CLI scripts, server, tests).
 
 ## Why a separate package
 
-`ob_dump_reader` depends on [`dart_lmdb2`](https://pub.dev/packages/dart_lmdb2),
-which loads its native LMDB library via a `dart run dart_lmdb2:fetch_native`
-step that downloads a binary into the package's own directory in your pub
-cache. That's fine for a `dart run` script on a desktop — it is **not** part
-of a compiled Android/iOS app bundle a real user installs.
+This package is a real Flutter plugin (`ffiPlugin: true` in `pubspec.yaml`,
+for all five platforms — Android, iOS, Linux, macOS, Windows). It compiles
+the same vendored LMDB C source [`ob_dump_reader`](../dart) binds to
+(`src/lmdb/`, duplicated here since these are separate published packages
+with no reliable cross-package relative path) via each platform's own
+native build convention — CMake on Linux/Windows/Android (through the NDK),
+a CocoaPods podspec plus small forwarder `.c` files on iOS/macOS — and
+Flutter's tooling bundles the resulting library into the shipped app
+automatically. `ob_dump_reader` on its own only offers
+`dart run ob_dump_reader:build`, which produces a library for the current
+desktop machine — useful for a plain Dart script, not for an app another
+user installs on a *different* device.
 
-[`flutter_lmdb2`](https://pub.dev/packages/flutter_lmdb2) is a genuine
-Flutter plugin (Android Gradle / iOS podspec / macOS) that bundles the same
-native library properly for a shipped app, and re-exports `dart_lmdb2`'s
-identical API (its own `lib/lmdb.dart` is literally
-`export 'package:dart_lmdb2/lmdb.dart';` — confirmed by inspecting the
-published package, not assumed).
+`ffiPlugin: true` (rather than `pluginClass:`) is used because there is no
+method-channel surface at all here — confirmed against the official
+`flutter create --template=plugin_ffi` scaffold, not guessed.
 
-This package's only job is adding `flutter_lmdb2` to the resolved dependency
-graph so Flutter's plugin-discovery tooling (which scans the *whole* graph,
-not just direct dependencies) notices it and wires up native bundling for
-whatever app depends on this package — transitively, without that app's own
-`pubspec.yaml` needing to mention `flutter_lmdb2` at all. No source code
-here needs to import `flutter_lmdb2` directly for that to work; it just
-needs to be present as a dependency.
+## Verified platforms
 
-## Known limitation: crashes in a compiled release build on Linux/Windows
-
-**Confirmed empirically** (built a scratch Flutter Linux app, ran
-`flutter build linux --release`, copied only the resulting bundle to an
-isolated directory with no source project or pub cache — the same shape a
-distributed app install has — and ran it): `dart_lmdb2`'s own native-library
-path resolution (`LMDBNative._resolveLibraryPath()`) uses
-`Isolate.resolvePackageUriSync()`, which only works in JIT mode (`dart run`/
-`flutter run`) — a compiled AOT release build throws
-`Unsupported operation: Isolate.resolvePackageUriSync` immediately on the
-first LMDB open. This affects **every** compiled Flutter Linux/Windows
-release build depending on `dart_lmdb2` (directly or via this package),
-regardless of how `liblmdb.so` itself was obtained.
-
-This is not something `ob_dump_reader_flutter` (or `ob_dump_reader`) can fix
-from its position as a plain API consumer of `dart_lmdb2` — the fix belongs
-either upstream in [`dart_lmdb2`](https://github.com/grammatek/dart_lmdb2)
-or in whatever's building the final app. `dart run`/`flutter run` (JIT) is
-unaffected — everything already verified in
-[`ob_dump_reader`](../dart/README.md) via `dart run` remains accurate.
-
-Platform notes, by code inspection (only Linux was empirically built and
-run — see above; the rest is reasoning about `dart_lmdb2`'s source, not
-independently verified the same way):
-- **iOS**: unaffected — `_openLibrary()` returns `DynamicLibrary.process()`
-  unconditionally for `Platform.isIOS`, never reaching the buggy
-  `_resolveLibraryPath()` code path at all.
-- **macOS**: *likely* unaffected when used as a Flutter plugin — same
-  `DynamicLibrary.process()` shortcut, but gated on a runtime
-  `_isStaticallyLinked()` symbol-lookup check rather than being
-  unconditional like iOS.
-- **Android**: *no such bypass exists in the source* — `_openLibrary()`
-  takes the same `_resolveLibraryPath()` path unconditionally as Linux/
-  Windows do, which suggests a compiled release APK may hit the identical
-  crash. Not empirically tested (would need an actual Android build/run);
-  flagged here rather than assumed fine.
+- **Linux**: built via a real `flutter build linux --release`, the output
+  bundle copied to an isolated directory (no source project, no pub cache)
+  and run directly, reading a real ObjectBox database successfully.
+- **Android**: a real debug/release APK built and installed on an emulator;
+  `liblmdb.so` present for all three ABIs (arm64-v8a, armeabi-v7a, x86_64),
+  confirmed working via logcat output from an on-device LMDB write+read
+  round trip.
+- **Windows / macOS / iOS**: written to match the official
+  `flutter create --template=plugin_ffi` scaffold exactly (generated that
+  scaffold and diffed against it), but **not** built on real hardware — no
+  Windows or macOS/Xcode toolchain available in the environment this was
+  developed in. Flagged here rather than assumed working.
 
 ## Usage
 

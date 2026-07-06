@@ -7,7 +7,8 @@
 Minimal ObjectBox LMDB reader toolkit for Dart. Its core job: walk a
 `data.mdb` file and hand you each stored object's raw FlatBuffers table
 bytes, plus its entity id and object id — no per-field FlatBuffers or
-schema knowledge for that part, just [`dart_lmdb2`](https://pub.dev/packages/dart_lmdb2).
+schema knowledge for that part, just a small purpose-built `dart:ffi`
+binding over vendored LMDB C source (see "Why this shape" below).
 It also covers the handful of things `flatc --dart` output can't: `ToMany`
 relations (a separate LMDB structure, not a table field) and `Flex`/
 `ExternalPropertyType` fields (`flatc` only knows the base FlatBuffers
@@ -22,11 +23,24 @@ for the reasoning.
 
 **Using this from a Flutter app?** Depend on
 [`../flutter`](../flutter) (`ob_dump_reader_flutter`) instead of this
-package directly — same API, but it pulls in `flutter_lmdb2` so Flutter's
-plugin tooling bundles the native LMDB library into your Android/iOS/macOS
-app. This package's own `dart_lmdb2` dependency only fetches a binary into
-your pub cache, which works for a `dart run` script but isn't part of a
-shipped mobile app.
+package directly — same API, but it's a real Flutter plugin (`ffiPlugin:
+true`) that compiles and bundles the native LMDB library for you on every
+platform (Android/iOS/Linux/macOS/Windows). This package on its own only
+gives you `dart run ob_dump_reader:build` (see below), which is enough for
+a plain Dart script/CLI but not for a shipped Flutter app.
+
+## Building the native library (plain Dart)
+
+```sh
+dart run ob_dump_reader:build
+```
+
+Compiles the vendored LMDB source (`src/lmdb/`) into a shared library for
+the current desktop platform, via a plain CMake configure+build — no
+network access, no FetchContent, no prebuilt binary download. Only needed
+if you're using this package directly from a plain Dart project (script,
+CLI, server); `ob_dump_reader_flutter` builds and bundles its own copy
+automatically as part of `flutter build`/`flutter run`.
 
 ## Workflow
 
@@ -65,20 +79,15 @@ Future<void> main() async {
 }
 ```
 
-## Copy-free reads (large databases)
+## Reads are in place, no copy
 
-`readObjectBoxRecords` works on a temporary copy of `data.mdb`/`lock.mdb` —
-needed because opening an ObjectBox store requires one write-capable LMDB
-transaction (nothing is actually written, just an internal handle
-registration), and doing that against a live database risks colliding with
-a running ObjectBox process. That copy costs disk I/O/space proportional to
-the database size. (`lock.mdb` itself is just LMDB's coordination file, not
-data — see `docs/BACKLOG.md` phased-plan item 10 for why we copy it anyway.)
-
-If you know the source isn't in use by anything else and skipping that cost
-matters (a large database), use `readObjectBoxRecordsUnsafe` instead — same
-signature, no copy, reads `objectboxDir` directly. See its doc comment for
-the exact risk before reaching for it.
+`readObjectBoxRecords` reads `data.mdb`/`lock.mdb` directly, with no
+temporary copy step — it opens the LMDB environment itself `MDB_RDONLY`
+(matching `ob-dump`'s own C++ `LmdbReader`), so it never needs a
+write-capable handle. This is exactly what LMDB's MVCC design is for: any
+number of readers can safely run alongside one concurrent writer, in any
+process, with zero risk to the original data — even while a live
+ObjectBox process has the same store open.
 
 ## Beyond `flatc`: ToMany relations and Flex/ExternalPropertyType fields
 
@@ -115,13 +124,26 @@ one-directional dump).
 
 ## Why this shape
 
-The alternative — an FFI wrapper around `ob-dump`'s C++ core — would mean
-vendoring/building native C++ from a pub.dev package for every platform.
-None of that is needed here: `dart_lmdb2` already gives pure-Dart-callable
-LMDB access, and `flatc --dart` already gives an officially generated,
-correct decoder. This package is only the small piece connecting the two —
-LMDB traversal and the ObjectBox key format
-(`docs/BACKLOG.md` in the parent project) — and stays that small on purpose.
+The alternative — an FFI wrapper around `ob-dump`'s full C++ core — would
+mean vendoring/building that much larger codebase from a pub.dev package
+for every platform. Not needed: LMDB itself is a single small C library
+(`src/lmdb/`, vendored from the same upstream commit `ob-dump`'s own C++
+core builds), so this package binds directly to it via a purpose-built
+`dart:ffi` layer (`lib/src/lmdb_bindings.dart`), and `flatc --dart` already
+gives an officially generated, correct FlatBuffers decoder. This package is
+only the small piece connecting the two — LMDB traversal and the
+ObjectBox key format (`docs/BACKLOG.md` in the parent project) — and stays
+that small on purpose.
+
+An earlier version of this package depended on
+[`dart_lmdb2`](https://pub.dev/packages/dart_lmdb2) instead of vendoring
+LMDB directly. Dropped because its native-library path resolution
+(`Isolate.resolvePackageUriSync()`) throws `UnsupportedError` outright in
+any compiled AOT release build — confirmed empirically against a real
+`flutter build linux --release`, run from an isolated copy of just the
+output bundle — and because it required a write-capable LMDB environment
+just to open a store, forcing a copy-to-temp step this package no longer
+needs (see "Reads are in place, no copy" above).
 
 ## Verified end-to-end
 
