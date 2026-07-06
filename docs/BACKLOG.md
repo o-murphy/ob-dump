@@ -246,10 +246,31 @@ decoder's output exactly.
   need no extra work either now that `Flex` itself decodes (item 20 below):
   they're just a semantic promise that the root value is specifically a map
   or vector, which the generic `Flex` decoder already handles regardless.
-  **Not implemented:** `Int128Vector`(116)/`UuidVector`(118) (would need a
-  vector-of-byte-vectors wire structure, not one of our current vector
-  categories), and the Mongo-specific codes (`MongoId` and friends, rare,
-  not researched). Like `UNSIGNED`, no real schema encountered so far
+  **Deliberately not implemented — `Int128Vector`(116)/`UuidVector`(118):
+  the wire format is genuinely undocumented, not just unimplemented here.**
+  Checked the authoritative source (`objectbox.h` from the official
+  `objectbox` Dart package, `~/.pub-cache/hosted/pub.dev/objectbox-5.3.x`):
+  every other `OBXExternalPropertyType` value carries an explicit
+  `Representing type: X` doc comment (`Json` → `String`, `Bson` →
+  `ByteVector`, `MongoBinary` → `ByteVector`, `MongoRegex` → "string vector
+  with 2 elements", etc.) — `Int128Vector`, `UuidVector`, and
+  `MongoIdVector`(124) are the only three that say just "a vector (array)
+  of X values" with **no `Representing type:` line at all**. That's not
+  an oversight in one place — checked all three, all missing it the same
+  way, unlike every neighboring code. Our own earlier guess here ("would
+  need a vector-of-byte-vectors wire structure") was exactly that — a
+  guess, not something confirmed against the spec. Plausible actual
+  encodings: a flat `ByteVector` of N×16 concatenated bytes (matching how
+  scalar `Uuid`/`Int128` already reuse `ByteVector`), a genuine
+  vector-of-offsets-to-`ByteVector` structure, or simply not yet
+  implemented in `objectbox-c` itself the way `Json`/`Bson` are explicitly
+  flagged "Placeholder (not yet used)" (just without that same label).
+  Implementing against a guess risks silently decoding wrong values
+  instead of failing loudly — worse than leaving it out. Left unimplemented
+  until a real schema using this exists to verify against; the
+  Mongo-specific codes (`MongoId` and friends) are equally out of scope,
+  same reasoning, lower priority (Mongo interop isn't a target use case
+  here at all). Like `UNSIGNED`, no real schema encountered so far
   (including ebalistyka's) actually sets `externalType` — checked the same
   way, found none.
 - Big-endian host support — **already correct, not actually a gap** (this

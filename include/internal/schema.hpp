@@ -77,8 +77,13 @@ constexpr int Json         = 109;  // String
 constexpr int Bson         = 110;  // ByteVector
 constexpr int JavaScript   = 111;  // String
 constexpr int JsonToNative = 112;  // String
-constexpr int Int128Vector = 116;  // not decoded specially — see docs
-constexpr int UuidVector   = 118;  // not decoded specially — see docs
+// Not decoded specially — deliberately, not just unimplemented. Unlike
+// every other code above, objectbox.h documents no "Representing type:"
+// for these (checked: same gap for MongoIdVector too) — the wire format
+// isn't part of the spec we have, so decoding it would mean guessing.
+// See docs/BACKLOG.md "Explicitly out of scope" for the full reasoning.
+constexpr int Int128Vector = 116;
+constexpr int UuidVector   = 118;
 }  // namespace ExternalPropertyType
 
 struct PropertyDef {
