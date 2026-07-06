@@ -163,8 +163,10 @@ recursively into the equivalent JSON shape). `ToMany` relations are not
 implemented — they live in a separate LMDB relation-index structure, not a
 table field. The `ExternalPropertyType` annotation layer (`Uuid`, `Int128`,
 etc.) is partially handled: `Uuid`/`Int128`/`Decimal128`/`Bson` decode as
-hex/UUID strings instead of raw byte arrays. See `docs/BACKLOG.md` for the
-full list and the reasoning behind each design choice.
+hex/UUID strings instead of raw byte arrays, and `Json`/`JavaScript`/
+`JsonToNative` decode as parsed JSON instead of an escaped JSON string.
+See `docs/BACKLOG.md` for the full list and the reasoning behind each
+design choice.
 
 ## Integrity & Licensing
 
