@@ -8,7 +8,7 @@ Generated from the repo root's `CHANGELOG.md` at publish time — see that
 file if you're reading this in the published package and want the full
 picture across the other packages in this repo too.
 
-## [0.1.0-alpha.1] - 2026-07-06
+## [0.1.0-alpha.2] - 2026-07-06
 
 ### Changed
 
@@ -44,5 +44,5 @@ picture across the other packages in this repo too.
   properly bundles the native LMDB library on Android/iOS/macOS (see the
   `[Unreleased]` entry above for why that dependency was since dropped).
 
-[0.1.0-alpha.1]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.1
+[0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.0]: https://pub.dev/packages/ob_dump_reader_flutter/versions/0.1.0-alpha.0

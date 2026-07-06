@@ -10,7 +10,7 @@ picture across the other packages in this repo too.
 
 Version numbers are derived from git tags via `setuptools_scm`, not hand-bumped in this file.
 
-## [0.1.0-alpha.1] - 2026-07-06
+## [0.1.0-alpha.2] - 2026-07-06
 
 ### Fixed
 
@@ -94,4 +94,4 @@ Version numbers are derived from git tags via `setuptools_scm`, not hand-bumped 
   `__init__.py` here holds real logic (not just re-exports), so excluding
   it from linting was hiding real issues (see the fixes above).
 
-[0.1.0-alpha.1]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.1
+[0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2

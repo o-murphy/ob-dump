@@ -14,7 +14,7 @@ endif()
 # Overridden by the release workflow (-DOB_DUMP_VERSION=X.Y.Z, derived from
 # the git tag) so ob_dump_version() reports the real release version
 # instead of staying hardcoded forever.
-set(OB_DUMP_VERSION "0.1.0-alpha.1" CACHE STRING "ob-dump version string, reported by ob_dump_version()")
+set(OB_DUMP_VERSION "0.1.0-alpha.2" CACHE STRING "ob-dump version string, reported by ob_dump_version()")
 
 include(FetchContent)
 

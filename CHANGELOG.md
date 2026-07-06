@@ -6,16 +6,21 @@ truth. Each package's own `CHANGELOG.md` (`dart/CHANGELOG.md`,
 `flutter/CHANGELOG.md`, `py/CHANGELOG.md`) is **generated** from this file
 by `scripts/ci/sync_changelogs.py` — a physical copy still has to exist in
 each package's own directory because pub.dev refuses to publish a package
-without one, so a purely root-level file can't fully replace them. It's
-never committed to the repo: `release.yml`'s `publish-dart`/
-`publish-flutter` jobs each generate their own package's copy fresh, right
-before `pub publish`, in that ephemeral checkout only (**not** gitignored —
-`pub publish` determines package contents via git tracking status, and
-deliberately excludes gitignored files even if force-staged, so the
-generated file has to be a plain untracked-but-not-ignored file for `pub`
-to actually include it — confirmed empirically, not assumed). **Edit this
-file, then run `scripts/ci/sync_changelogs.py [pkg]` locally** if you want
-to preview a package's own rendered copy.
+without one, so a purely root-level file can't fully replace them. Those
+generated copies *are* committed (so they're browsable on GitHub/pub.dev
+without needing a build step), but `release.yml`'s `publish-dart`/
+`publish-flutter` jobs still regenerate them fresh right before `pub
+publish` regardless, as a safety net against a committed copy having
+drifted out of sync with this file. **Edit this file, then run
+`scripts/ci/sync_changelogs.py` and commit the regenerated
+`dart/`/`flutter/`/`py/CHANGELOG.md` alongside your change.**
+
+Note for anyone touching the generation step itself: `dart/.gitignore`/
+`flutter/.gitignore` must never gitignore `CHANGELOG.md` — `pub publish`
+determines package contents via git tracking status and deliberately
+excludes gitignored files even if force-staged (confirmed empirically:
+`git add -f` still triggers a "checked in while gitignored" warning and
+gets dropped from the published archive).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -28,14 +33,20 @@ no package registry of its own to publish to, so entries land only here,
 never copied anywhere). Only `0.1.0-alpha.0` has actually shipped so far —
 published by hand directly to pub.dev to reserve the package names, never
 through a git tag/`release.yml` run, so it has no GitHub tag to link to
-below (see `docs/BACKLOG.md` item 18). `0.1.0-alpha.1` is the next planned
-release — `dart/pubspec.yaml`/`flutter/pubspec.yaml` are already bumped to
-match, in preparation for tagging it — but isn't real until the matching
-`v0.1.0-alpha.1` tag is actually pushed and `release.yml` runs.
+below (see `docs/BACKLOG.md` item 18). `v0.1.0-alpha.1` was tagged and got
+a GitHub Release, but its `dart`/`flutter`/`pypi` publish jobs failed or
+published the wrong version before any package registry actually received
+new content under that version (generated-`CHANGELOG.md`-vs-`.gitignore`,
+`pubspec.yaml` description-length, and `fetch-tags`/`setuptools_scm`
+bugs — all since fixed, see `docs/BACKLOG.md` item 24) — so it's skipped
+entirely rather than reused. `0.1.0-alpha.2` is the next planned release —
+`dart/pubspec.yaml`/`flutter/pubspec.yaml` are already bumped to match, in
+preparation for tagging it — but isn't real until the matching
+`v0.1.0-alpha.2` tag is actually pushed and `release.yml` runs clean.
 
 ## [Unreleased]
 
-## [0.1.0-alpha.1] - 2026-07-06
+## [0.1.0-alpha.2] - 2026-07-06
 
 ### dart/
 
@@ -232,5 +243,5 @@ to reserve the package names — confirmed live via pub.dev's own API
   properly bundles the native LMDB library on Android/iOS/macOS (see the
   `[Unreleased]` entry above for why that dependency was since dropped).
 
-[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.1...HEAD
-[0.1.0-alpha.1]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.1
+[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...HEAD
+[0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2
