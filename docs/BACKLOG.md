@@ -218,9 +218,55 @@ decoder's output exactly.
 
 ## Explicitly out of scope for v1 (tracked here, not silently ignored)
 
-- **`ToMany` relations** — stored in a *separate* LMDB relation-index structure
-  (different key-type byte, not part of the object's FlatBuffers table at
-  all). Needs its own walk once we have a real schema that uses one.
+- **`ToMany` relations — wire format now confirmed empirically, decode not
+  yet implemented.** Previously blocked on "no real schema encountered
+  that uses one" — resolved by building one: a scratch Dart-native project
+  (`dart pub add objectbox`, `dart pub add --dev build_runner
+  objectbox_generator:any`, the real `objectbox-c` native lib via
+  `objectbox-dart`'s own `install.sh`), two entities (`Author`, `Book`)
+  with `Book.authors`/`Book.editors` as two separate `ToMany<Author>`
+  fields (to get two different relation ids to cross-check against, not
+  just one), populated with real data, then cursor-walked the resulting
+  `data.mdb` raw (via `dart_lmdb2` directly — every key + value length,
+  no filtering), not just decoded through our own existing key-type
+  assumptions.
+
+  **Confirmed key format**, cross-checked against two independent
+  relation ids (`authors` = relation id 1, `editors` = relation id 2) so
+  it isn't a one-data-point coincidence:
+
+  ```
+  [type:1 = 0x08][0x00][0x00][(relation_id << 2) | direction:1][source_id:u32 BE][target_id:u32 BE]
+  ```
+
+  12 bytes total, value always **empty** (0 bytes) — the key alone *is*
+  the link; presence means the relation exists, nothing else to decode.
+  `direction`: `0` = forward, in the declared direction (owning entity's
+  id → target entity's id, e.g. `Book#1 → Author#1`); `2` = backward, an
+  automatically-maintained reverse index (target's id → owning entity's
+  id, e.g. `Author#1 → Book#1`) that a plain forward relation-id walk
+  would otherwise miss for "which books reference this author"-style
+  queries. Both directions observed for both test relations
+  (`authors`: byte4 `0x04`/`0x06` = `1<<2 | 0`/`1<<2 | 2`; `editors`:
+  `0x08`/`0x0a` = `2<<2 | 0`/`2<<2 | 2`) — the shift-by-2 (leaving 2 low
+  bits for direction) mirrors the same convention this project already
+  relies on for `entity_id*4` in the 8-byte object-data key.
+
+  This key type (`0x08`) is distinct from the `0x00` (schema) and `0x18`
+  (object data) types already documented above, and from the `0x20`
+  ("index") byte this doc previously guessed at — `0x20` is unverified by
+  this investigation (no `@Index()` property was tested) and may refer to
+  something else entirely (a property index, not a relation).
+
+  **Not implemented yet** — decoding this would mean: for each object,
+  walking model.json's `relations` list on its entity, and for each one,
+  a separate cursor lookup (`set_range` on `[0x08,0,0,(relationId<<2),objectId]`)
+  to collect target ids into e.g. `"authorIds": [1, 2]` in the JSON
+  output. Straightforward given this now-confirmed format, just not yet
+  written or tested against `decodeObject`'s existing per-record flow
+  (which currently only reads the FlatBuffers table itself, not a second
+  LMDB structure per record) — left for a follow-up pass rather than
+  folded in here.
 - ~~`Flex` properties~~ — **done, see phased-plan item 20 below.**
 - **`ExternalPropertyType` — partially implemented.** This is a semantic
   annotation *on top of* a base `PropertyType` (the `"externalType"` field
