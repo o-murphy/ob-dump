@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: ob-dump-reader
+Version: 0.1.0a0
+Summary: Add your description here
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: flatbuffers>=25.12.19
+Requires-Dist: lmdb>=2.2.1
+Dynamic: license-file

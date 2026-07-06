@@ -1,0 +1,2 @@
+flatbuffers>=25.12.19
+lmdb>=2.2.1

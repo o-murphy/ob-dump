@@ -1,0 +1,13 @@
+LICENSE
+README.md
+pyproject.toml
+uv.lock
+src/ob_dump_reader/__init__.py
+src/ob_dump_reader/__main__.py
+src/ob_dump_reader/decode_helper.py
+src/ob_dump_reader/relations.py
+src/ob_dump_reader.egg-info/PKG-INFO
+src/ob_dump_reader.egg-info/SOURCES.txt
+src/ob_dump_reader.egg-info/dependency_links.txt
+src/ob_dump_reader.egg-info/requires.txt
+src/ob_dump_reader.egg-info/top_level.txt

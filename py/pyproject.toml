@@ -1,9 +1,15 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ob-dump-reader"
-version = "0.1.0"
+version = "0.1.0a0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-    "lmdb>=2.2.1",
-]
+dependencies = ["flatbuffers>=25.12.19", "lmdb>=2.2.1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ob_dump_reader*"]
