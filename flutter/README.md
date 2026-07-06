@@ -1,7 +1,7 @@
 # ob_dump_reader_flutter
 
 ![GitHub License](https://img.shields.io/github/license/o-murphy/ob-dump)
-![Pub Version](https://img.shields.io/pub/v/ob_dump_reader_flutter?logo=dart)
+![Pub Version](https://img.shields.io/pub/v/ob_dump_reader_flutter?logo=flutter)
 
 
 Same API as [`ob_dump_reader`](../dart) — `readObjectBoxRecords`,
