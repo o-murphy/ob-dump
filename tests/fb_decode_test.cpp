@@ -7,6 +7,7 @@
 #include <cstdio>
 
 #include <flatbuffers/flatbuffers.h>
+#include <flatbuffers/flexbuffers.h>
 #include <nlohmann/json.hpp>
 
 #include "internal/fb_decode.hpp"
@@ -282,6 +283,110 @@ void testExternalTypeByteVectorsDecodeAsStrings() {
     std::puts("testExternalTypeByteVectorsDecodeAsStrings: OK");
 }
 
+// Wraps a FlexBuffers-encoded blob as the sole ByteVector field of a
+// one-property "Flex" entity, decodes it, and returns the resulting value
+// at that field (not the whole object) for easy assertions.
+nlohmann::json decodeFlexValue(flexbuffers::Builder& flex) {
+    flex.Finish();
+    const auto& flexBuf = flex.GetBuffer();
+
+    flatbuffers::FlatBufferBuilder fbb;
+    auto flexOff = fbb.CreateVector<uint8_t>(flexBuf);
+    auto start = fbb.StartTable();
+    fbb.AddOffset(slotFor(1), flexOff);
+    auto end = fbb.EndTable(start);
+    fbb.Finish(flatbuffers::Offset<flatbuffers::Table>(end));
+
+    EntityDef entity;
+    entity.entityId = 1;
+    entity.name     = "FlexHolder";
+    entity.properties = {{1, "flexField", PropertyType::Flex}};
+
+    nlohmann::json j = decodeObject(fbb.GetBufferPointer(), fbb.GetSize(), entity);
+    return j.at("flexField");
+}
+
+// A FlexBuffers map decodes to the equivalent JSON object, recursing into
+// nested vectors/scalars/strings correctly.
+void testFlexMapDecodesToJsonObject() {
+    flexbuffers::Builder flex;
+    flex.Map([&] {
+        flex.Int("a", 1);
+        flex.String("b", "hello");
+        flex.Vector("c", [&] {
+            flex.Int(1);
+            flex.Int(2);
+            flex.Int(3);
+        });
+        flex.Bool("d", true);
+        flex.Null("e");
+    });
+
+    nlohmann::json j = decodeFlexValue(flex);
+    assert(j.at("a").get<int64_t>() == 1);
+    assert(j.at("b").get<std::string>() == "hello");
+    assert((j.at("c") == nlohmann::json::array({1, 2, 3})));
+    assert(j.at("d").get<bool>() == true);
+    assert(j.at("e").is_null());
+
+    std::puts("testFlexMapDecodesToJsonObject: OK");
+}
+
+// A FlexBuffers value doesn't have to be a map at the root — a bare vector
+// (or even a bare scalar) is equally valid and must decode correctly too.
+void testFlexVectorRootDecodesToJsonArray() {
+    flexbuffers::Builder flex;
+    flex.Vector([&] {
+        flex.String("x");
+        flex.Double(2.5);
+        flex.Bool(false);
+    });
+
+    nlohmann::json j = decodeFlexValue(flex);
+    assert(j.is_array());
+    assert(j.at(0).get<std::string>() == "x");
+    assert(j.at(1).get<double>() == 2.5);
+    assert(j.at(2).get<bool>() == false);
+
+    std::puts("testFlexVectorRootDecodesToJsonArray: OK");
+}
+
+// A corrupted FlexBuffers blob (truncated mid-value) must be caught by
+// flexbuffers::VerifyBuffer(), not just the outer FlatBuffers Verifier —
+// the outer one only bounds-checks the ByteVector itself, not the
+// independently-encoded FlexBuffers structure inside it.
+void testCorruptFlexBufferThrows() {
+    flexbuffers::Builder flex;
+    flex.Map([&] {
+        flex.String("a", "a reasonably long string so truncation lands mid-structure");
+    });
+    flex.Finish();
+    auto flexBuf = flex.GetBuffer();
+    flexBuf.resize(flexBuf.size() / 2);  // truncate — no longer a valid FlexBuffers value
+
+    flatbuffers::FlatBufferBuilder fbb;
+    auto flexOff = fbb.CreateVector<uint8_t>(flexBuf);
+    auto start = fbb.StartTable();
+    fbb.AddOffset(slotFor(1), flexOff);
+    auto end = fbb.EndTable(start);
+    fbb.Finish(flatbuffers::Offset<flatbuffers::Table>(end));
+
+    EntityDef entity;
+    entity.entityId = 1;
+    entity.name     = "FlexHolder";
+    entity.properties = {{1, "flexField", PropertyType::Flex}};
+
+    bool threw = false;
+    try {
+        decodeObject(fbb.GetBufferPointer(), fbb.GetSize(), entity);
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    assert(threw);
+
+    std::puts("testCorruptFlexBufferThrows: OK");
+}
+
 // A truncated/corrupted buffer must be caught by flatbuffers::Verifier and
 // surfaced as an exception, never read out of bounds.
 void testCorruptBufferThrows() {
@@ -317,6 +422,9 @@ int main() {
     testUnknownTypeIsSkipped();
     testUnsignedIntegersDecodeCorrectly();
     testExternalTypeByteVectorsDecodeAsStrings();
+    testFlexMapDecodesToJsonObject();
+    testFlexVectorRootDecodesToJsonArray();
+    testCorruptFlexBufferThrows();
     testCorruptBufferThrows();
     std::puts("fb_decode_test: OK");
     return 0;

@@ -56,35 +56,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Configure
-        shell: bash
-        run: |
-          VERSION="${RELEASE_TAG#v}"  # tag is "v1.2.3", pubspecs/OB_DUMP_VERSION want bare "1.2.3"
-          cmake -B build -DOB_DUMP_VERSION="$VERSION" ${{ matrix.cmake_extra }}
-
-      - name: Build
-        run: cmake --build build --config Release --parallel
-
       # windows-11-arm/ubuntu-24.04-arm run the tests natively (real ARM64
       # hosts) — no emulation, no skipped tests, unlike a cross-compiled
       # binary would need.
-      - name: Test
-        run: ctest --test-dir build --output-on-failure -C Release
+      - name: Build + test
+        shell: bash
+        run: |
+          VERSION="${RELEASE_TAG#v}"  # tag is "v1.2.3", pubspecs/OB_DUMP_VERSION want bare "1.2.3"
+          OB_DUMP_VERSION="$VERSION" ./scripts/ci/build-cpp.sh ${{ matrix.cmake_extra }}
 
       - name: Package
         shell: bash
-        run: |
-          mkdir -p dist
-          if [ -f build/Release/ob_dump.exe ]; then
-            cp build/Release/ob_dump.exe build/Release/ob_dump.dll build/Release/ob_dump.lib dist/
-          elif [ -f build/ob_dump.exe ]; then
-            cp build/ob_dump.exe build/ob_dump.dll build/ob_dump.lib dist/
-          else
-            cp build/ob_dump dist/
-            cp build/libob_dump.* dist/
-          fi
-          cp include/ob_dump.h dist/
-          tar -czf ob-dump-${{ matrix.name }}.tar.gz -C dist .
+        run: ./scripts/ci/package-cpp.sh ${{ matrix.name }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -94,34 +77,20 @@ jobs:
   # ── 3 + 5 (dart half) ──────────────────────────────────────────────────
   test-dart:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: dart
     steps:
       - uses: actions/checkout@v7
       - uses: dart-lang/setup-dart@v1
-      - run: dart pub get
-      # dart_lmdb2 ships prebuilt native libraries but doesn't fetch them on
-      # `pub get` — required before first use, per its README (same step
-      # already in dart.yml; missed here — caught by an actual failed run,
-      # not proactively).
-      - run: dart run dart_lmdb2:fetch_native
-      - run: dart analyze
-      - run: dart test
+      - run: ./scripts/ci/test-dart.sh
 
   # ── 4 + 5 (flutter half) ───────────────────────────────────────────────
   test-flutter:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: flutter
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - run: flutter pub get
-      - run: flutter analyze
+      - run: ./scripts/ci/test-flutter.sh
 
   # ── 2: bump both pubspecs to the tag's version, commit + push to main ──
   bump-versions:
@@ -182,6 +151,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: main
+          fetch-depth: 0  # full history/tags — needed below for the previous-tag lookup
 
       - uses: actions/download-artifact@v4
         with:
@@ -192,24 +162,32 @@ jobs:
       - name: Extract release notes from dart/CHANGELOG.md
         run: |
           VERSION="${{ needs.bump-versions.outputs.version }}"
-          # Also stops at a markdown link-reference line (e.g. "[0.1.0]: ..."),
-          # not just the next "## [" heading — otherwise the CHANGELOG's own
-          # footer link references leak into the release body when this is
-          # the most recent version section (nothing else bounds it).
-          awk "/^## \[$VERSION\]/{found=1; next} /^## \[/{if(found) exit} /^\[.+\]:/{if(found) exit} found{print}" \
-            dart/CHANGELOG.md > /tmp/release_notes.md
+          ./scripts/ci/extract-changelog.sh "$VERSION" dart/CHANGELOG.md > /tmp/release_notes.md
+
           if [ ! -s /tmp/release_notes.md ]; then
             if [ "$IS_DRY_RUN" = "true" ]; then
               # A dry run's whole point is trying a tag/version that isn't
               # "real" yet — requiring a matching CHANGELOG.md entry for it
               # would defeat that. Only a real release enforces this.
-              echo "::warning::No changelog entry found for $VERSION — fine for a dry run, required for a real release."
+              echo "::warning::No changelog entry found for $VERSION (or [Unreleased]) — fine for a dry run, required for a real release."
               echo "_(dry run: no matching CHANGELOG.md entry for $VERSION)_" > /tmp/release_notes.md
             else
-              echo "No changelog entry found for $VERSION — add one to dart/CHANGELOG.md (and flutter/CHANGELOG.md) first"
+              echo "No changelog entry found for $VERSION (or [Unreleased]) — add one to dart/CHANGELOG.md (and flutter/CHANGELOG.md) first"
               exit 1
             fi
           fi
+
+          # Same "Full Changelog" compare-link footer convention GitHub's
+          # own auto-generated release notes use.
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${RELEASE_TAG}$" | head -1 || true)
+          if [ -n "$PREV_TAG" ]; then
+            {
+              echo ""
+              echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${RELEASE_TAG}"
+            } >> /tmp/release_notes.md
+          fi
+
+          echo "--- release notes ---"
           cat /tmp/release_notes.md
 
       - name: Create GitHub Release

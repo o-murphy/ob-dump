@@ -148,14 +148,14 @@ exists for your language (common — LMDB is a popular embedded store):
 
 ## Scope
 
-Reads all 20 non-`Flex` ObjectBox `PropertyType` codes: every fixed-width
-scalar (`Bool`, `Byte`, `Short`, `Char`, `Int`, `Long`, `Float`, `Double`,
-`Date`, `ToOne` relations, `DateNano`), `String`, and every vector form of
-the above — with correct signedness (the `UNSIGNED` property flag is
-honored, not just the type code). `ToMany` relations and `Flex` properties
-are not implemented — they're structurally different (a separate LMDB
-structure and a nested FlexBuffers blob, respectively), not just another
-field type. The `ExternalPropertyType` annotation layer (`Uuid`, `Int128`,
+Reads all 21 ObjectBox `PropertyType` codes: every fixed-width scalar
+(`Bool`, `Byte`, `Short`, `Char`, `Int`, `Long`, `Float`, `Double`, `Date`,
+`ToOne` relations, `DateNano`), `String`, every vector form of the above —
+with correct signedness (the `UNSIGNED` property flag is honored, not just
+the type code) — and `Flex` (a dynamic, embedded FlexBuffers value, decoded
+recursively into the equivalent JSON shape). `ToMany` relations are not
+implemented — they live in a separate LMDB relation-index structure, not a
+table field. The `ExternalPropertyType` annotation layer (`Uuid`, `Int128`,
 etc.) is partially handled: `Uuid`/`Int128`/`Decimal128`/`Bson` decode as
 hex/UUID strings instead of raw byte arrays. See `docs/BACKLOG.md` for the
 full list and the reasoning behind each design choice.

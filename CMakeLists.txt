@@ -81,7 +81,18 @@ add_library(ob_dump_core OBJECT
   src/ob_dump.cpp
 )
 target_include_directories(ob_dump_core PUBLIC include)
-target_compile_definitions(ob_dump_core PRIVATE OB_DUMP_BUILD OB_DUMP_VERSION="${OB_DUMP_VERSION}")
+# FLATBUFFERS_LOCALE_INDEPENDENT=0: flatbuffers/base.h auto-enables (=1) the
+# locale-independent strtod_l/strtoull_l path on Unix, but the ClassicLocale
+# type backing it is defined in util.cpp — part of the *compiled* flatbuffers
+# library we deliberately don't build (see the FlatBuffers section above:
+# header-only only). Forcing plain strtod/strtoull instead is fine — nothing
+# in this project calls setlocale(), so the "current" and "classic" C
+# locales are the same thing here regardless.
+target_compile_definitions(ob_dump_core PRIVATE
+  OB_DUMP_BUILD
+  OB_DUMP_VERSION="${OB_DUMP_VERSION}"
+  FLATBUFFERS_LOCALE_INDEPENDENT=0
+)
 target_link_libraries(ob_dump_core PUBLIC lmdb flatbuffers_headers nlohmann_json::nlohmann_json)
 set_target_properties(ob_dump_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 

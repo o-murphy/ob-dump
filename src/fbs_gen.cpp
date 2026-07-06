@@ -70,7 +70,9 @@ bool isVectorType(PropertyType type) {
 void writeField(std::ostringstream& out, const PropertyDef& prop) {
     out << "  " << prop.name << ":";
     if (prop.type == PropertyType::Flex) {
-        out << "[ubyte];  // Flex: raw FlexBuffers-encoded bytes, not decoded further here\n";
+        out << "[ubyte];  // Flex: raw FlexBuffers-encoded bytes; a flatc-generated\n"
+               "                    // reader gets these raw too (ob_dump's own JSON\n"
+               "                    // output decodes them, but that's a separate path)\n";
         return;
     }
     const char* base = fbsTypeName(prop.type, prop.isUnsigned);

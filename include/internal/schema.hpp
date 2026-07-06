@@ -10,11 +10,9 @@ namespace ob_dump_internal {
 
 // Full ObjectBox PropertyType enum, codes taken from the authoritative
 // source (official `objectbox` Dart package,
-// lib/src/modelinfo/enums.dart) — not guessed. `Flex` is intentionally
-// listed but not decoded (see docs/BACKLOG.md "Explicitly out of scope":
-// it's a nested FlexBuffers blob, a different encoding entirely, deferred
-// on purpose). `ToMany` relations aren't in this enum at all — they live in
-// a separate LMDB relation-index structure, not a table field.
+// lib/src/modelinfo/enums.dart) — not guessed. `ToMany` relations aren't in
+// this enum at all — they live in a separate LMDB relation-index structure,
+// not a table field (see docs/BACKLOG.md "Explicitly out of scope").
 enum class PropertyType : int {
     Bool           = 1,
     Byte           = 2,  // int8
@@ -33,7 +31,8 @@ enum class PropertyType : int {
     Date           = 10, // int64 ms-since-epoch
     Relation       = 11, // ToOne, stored as int64 fk
     DateNano       = 12, // int64 ns-since-epoch
-    Flex           = 13, // NOT decoded — see docs/BACKLOG.md
+    Flex           = 13, // dynamic FlexBuffers value, decoded recursively
+                         // into the equivalent JSON shape — see fb_decode.cpp
     BoolVector     = 22,
     ByteVector     = 23,
     ShortVector    = 24,

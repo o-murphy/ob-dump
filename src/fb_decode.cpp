@@ -1,6 +1,7 @@
 #include "internal/fb_decode.hpp"
 
 #include <flatbuffers/flatbuffers.h>
+#include <flatbuffers/flexbuffers.h>
 #include <nlohmann/json.hpp>
 
 #include <stdexcept>
@@ -111,13 +112,31 @@ void decodeNumericVector(const Table* t, Verifier& v, flatbuffers::voffset_t slo
     out[name] = std::move(arr);
 }
 
+std::string toHex(const uint8_t* data, size_t size) {
+    static const char* kHexDigits = "0123456789abcdef";
+    std::string hex;
+    hex.reserve(size * 2);
+    for (size_t i = 0; i < size; ++i) {
+        hex.push_back(kHexDigits[data[i] >> 4]);
+        hex.push_back(kHexDigits[data[i] & 0x0F]);
+    }
+    return hex;
+}
+
+// Groups a 16-byte hex string into the canonical 8-4-4-4-12 UUID form.
+// Falls back to plain hex for anything else — a malformed/non-UUID field
+// shouldn't throw just because of its externalType annotation.
+std::string hexAsUuid(const std::string& hex) {
+    if (hex.size() != 32) return hex;
+    return hex.substr(0, 8) + "-" + hex.substr(8, 4) + "-" + hex.substr(12, 4) + "-" +
+          hex.substr(16, 4) + "-" + hex.substr(20, 12);
+}
+
 // Hex-encodes a byte vector's raw contents. Used for ExternalPropertyType
 // codes whose base wire type is ByteVector but that represent an opaque
 // blob (Int128, Decimal128, Bson) rather than a list of small integers —
 // see docs/BACKLOG.md. `asUuid` additionally groups the hex digits into
-// the canonical 8-4-4-4-12 UUID string form (only meaningful for exactly
-// 16 bytes; falls back to plain hex otherwise — a malformed/non-UUID field
-// shouldn't throw just because of its externalType annotation).
+// the canonical UUID string form.
 void decodeByteVectorAsBlobString(const Table* t, Verifier& v, flatbuffers::voffset_t slot,
                                   const std::string& name, nlohmann::json& out, bool asUuid) {
     if (!t->CheckField(slot)) return;
@@ -130,21 +149,90 @@ void decodeByteVectorAsBlobString(const Table* t, Verifier& v, flatbuffers::voff
     }
     if (vec == nullptr) return;
 
-    static const char* kHexDigits = "0123456789abcdef";
-    std::string hex;
-    hex.reserve(vec->size() * 2);
-    for (flatbuffers::uoffset_t i = 0; i < vec->size(); ++i) {
-        uint8_t byte = vec->Get(i);
-        hex.push_back(kHexDigits[byte >> 4]);
-        hex.push_back(kHexDigits[byte & 0x0F]);
-    }
+    std::string hex = toHex(vec->Data(), vec->size());
+    out[name] = asUuid ? hexAsUuid(hex) : hex;
+}
 
-    if (asUuid && vec->size() == 16) {
-        out[name] = hex.substr(0, 8) + "-" + hex.substr(8, 4) + "-" + hex.substr(12, 4) + "-" +
-                   hex.substr(16, 4) + "-" + hex.substr(20, 12);
-    } else {
-        out[name] = hex;
+// Recursively converts a FlexBuffers value into the equivalent JSON shape.
+// Forward-declared because it's mutually recursive with flexVectorToJson.
+nlohmann::json flexToJson(flexbuffers::Reference ref);
+
+// Vector/TypedVector/FixedTypedVector are three different concrete classes
+// with no common base, but all three independently provide size() and
+// operator[](i)->Reference — genericizing over that shared shape here
+// avoids three near-identical hand-written loops.
+template <typename VecT>
+nlohmann::json flexVectorToJson(const VecT& vec) {
+    auto arr = nlohmann::json::array();
+    for (size_t i = 0; i < vec.size(); ++i) {
+        arr.push_back(flexToJson(vec[i]));
     }
+    return arr;
+}
+
+nlohmann::json flexToJson(flexbuffers::Reference ref) {
+    // Order matters: IsVector() is also true for maps (FlexBuffers models a
+    // map as a pair of parallel vectors internally), so IsMap() must be
+    // checked first.
+    if (ref.IsNull()) {
+        return nullptr;
+    } else if (ref.IsBool()) {
+        return ref.AsBool();
+    } else if (ref.IsInt()) {
+        return ref.AsInt64();
+    } else if (ref.IsUInt()) {
+        return ref.AsUInt64();
+    } else if (ref.IsFloat()) {
+        return ref.AsDouble();
+    } else if (ref.IsString()) {
+        return ref.AsString().str();
+    } else if (ref.IsBlob()) {
+        // Same "opaque bytes -> hex string" convention as ByteVector's
+        // ExternalPropertyType handling above, for the same reason: no
+        // single JSON-native representation for an arbitrary byte blob.
+        auto blob = ref.AsBlob();
+        return toHex(blob.data(), blob.size());
+    } else if (ref.IsMap()) {
+        auto m = ref.AsMap();
+        auto keys = m.Keys();
+        auto vals = m.Values();
+        auto obj = nlohmann::json::object();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            obj[keys[i].AsKey()] = flexToJson(vals[i]);
+        }
+        return obj;
+    } else if (ref.IsTypedVector()) {
+        return flexVectorToJson(ref.AsTypedVector());
+    } else if (ref.IsFixedTypedVector()) {
+        return flexVectorToJson(ref.AsFixedTypedVector());
+    } else if (ref.IsVector()) {
+        return flexVectorToJson(ref.AsVector());
+    }
+    return nullptr;  // Unrecognized FlexBuffers type — treat as absent.
+}
+
+// Flex properties are stored on the wire as a plain ByteVector containing
+// an embedded, independently-encoded FlexBuffers value (a different,
+// dynamic/self-describing format — see docs/BACKLOG.md). The outer
+// flatbuffers::Verifier only bounds-checks that ByteVector itself; the
+// bytes inside it need their own verification, which FlexBuffers provides
+// as flexbuffers::VerifyBuffer().
+void decodeFlex(const Table* t, Verifier& v, flatbuffers::voffset_t slot,
+               const std::string& name, nlohmann::json& out) {
+    if (!t->CheckField(slot)) return;
+    if (!t->VerifyOffset(v, slot)) {
+        throw std::runtime_error("corrupt record: bad vector offset '" + name + "'");
+    }
+    const auto* vec = t->GetPointer<const flatbuffers::Vector<uint8_t>*>(slot);
+    if (!v.VerifyVector(vec)) {
+        throw std::runtime_error("corrupt record: bad Flex byte vector '" + name + "'");
+    }
+    if (vec == nullptr) return;
+
+    if (!flexbuffers::VerifyBuffer(vec->Data(), vec->size())) {
+        throw std::runtime_error("corrupt record: invalid FlexBuffers contents in '" + name + "'");
+    }
+    out[name] = flexToJson(flexbuffers::GetRoot(vec->Data(), vec->size()));
 }
 
 void decodeStringVector(const Table* t, Verifier& v, flatbuffers::voffset_t slot,
@@ -257,6 +345,8 @@ nlohmann::json decodeObject(const uint8_t* data, size_t size, const EntityDef& e
                 break;
 
             case PropertyType::Flex:
+                decodeFlex(table, verifier, slot, prop.name, out);
+                break;
             case PropertyType::Unknown:
                 // Not implemented (see docs/BACKLOG.md "Explicitly out of
                 // scope") — skip rather than fail the whole record.

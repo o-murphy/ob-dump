@@ -221,22 +221,7 @@ decoder's output exactly.
 - **`ToMany` relations** — stored in a *separate* LMDB relation-index structure
   (different key-type byte, not part of the object's FlatBuffers table at
   all). Needs its own walk once we have a real schema that uses one.
-- **`Flex` properties** (`PropertyType` 13) — dynamic property stored as an
-  embedded FlexBuffers blob (a different encoding from the table-based
-  FlatBuffers we decode; would need its own recursive decoder, not just
-  another `switch` branch). Deliberately excluded from the "cover every
-  remaining type" pass — different enough in kind to warrant its own scoped
-  effort rather than being bundled in. **Needs zero new dependencies**:
-  `flexbuffers.h` ships inside the same `google/flatbuffers` repo this
-  project already `FetchContent`s (confirmed present in the vendored
-  source, not assumed) — header-only, same as everything else we use from
-  it. The wire representation is just the property's `ByteVector` bytes
-  handed to `flexbuffers::GetRoot(data, size)`, which returns a
-  self-describing `Reference` (`IsMap`/`IsVector`/`IsString`/`IsBool`/
-  `IsNumeric` + matching `As*()` accessors) — a recursive
-  `Reference -> nlohmann::json` converter is the same shape and rough size
-  (~50-100 lines) as the rest of this decoder. Not started; still its own
-  scoped effort, just a cheap one whenever it's prioritized.
+- ~~`Flex` properties~~ — **done, see phased-plan item 20 below.**
 - **`ExternalPropertyType` — partially implemented.** This is a semantic
   annotation *on top of* a base `PropertyType` (the `"externalType"` field
   on a property in model.json, numeric codes from the official `objectbox`
@@ -253,9 +238,11 @@ decoder's output exactly.
   `JsonToNative`(112) need no extra work — their base type is `String`,
   already decoded correctly; the only possible improvement there is
   cosmetic (parsing the string content as nested JSON instead of leaving it
-  as an escaped JSON string), not attempted. **Not implemented:**
-  `FlexMap`(107)/`FlexVector`(108) (base type `Flex`, already out of scope
-  — see above), `Int128Vector`(116)/`UuidVector`(118) (would need a
+  as an escaped JSON string), not attempted. `FlexMap`(107)/`FlexVector`(108)
+  need no extra work either now that `Flex` itself decodes (item 20 below):
+  they're just a semantic promise that the root value is specifically a map
+  or vector, which the generic `Flex` decoder already handles regardless.
+  **Not implemented:** `Int128Vector`(116)/`UuidVector`(118) (would need a
   vector-of-byte-vectors wire structure, not one of our current vector
   categories), and the Mongo-specific codes (`MongoId` and friends, rare,
   not researched). Like `UNSIGNED`, no real schema encountered so far
@@ -702,3 +689,73 @@ decoder's output exactly.
     pattern against both a matching and a missing version section, and the
     `publish_to: none` removal — all before trusting any of them inside
     the actual workflow.
+20. **`Flex` properties — done.** Recursive `flexbuffers::Reference ->
+    nlohmann::json` converter in `fb_decode.cpp` (`flexToJson`, ~90 lines,
+    matching the size estimate from when this was still "explicitly out of
+    scope" — see the struck-through entry above). No new dependency:
+    `flexbuffers.h` is the same header-only `google/flatbuffers` include
+    already used for everything else. Maps/vectors/scalars/strings/blobs
+    all handled; blobs get the same "opaque bytes -> hex string" treatment
+    as `ExternalPropertyType`'s `Uuid`/`Int128`/etc. (factored `toHex()` out
+    to a shared helper so both use the same code). Bounds-checked two ways,
+    not one: the outer `flatbuffers::Verifier` only covers the `ByteVector`
+    the Flex bytes live in — the FlexBuffers structure *inside* those bytes
+    gets its own independent check via `flexbuffers::VerifyBuffer()` before
+    `flexToJson` ever touches it. Covered by
+    `tests/fb_decode_test.cpp`: a map root, a bare vector root (FlexBuffers
+    values don't have to be maps), and a truncated/corrupted FlexBuffers
+    blob correctly throwing despite passing the *outer* Verifier fine.
+    `--fbs` generation is unchanged on purpose (still emits `[ubyte]` for
+    `Flex` — a `flatc`-generated reader in another language has no way to
+    know about our own `flexToJson`, so it still gets raw bytes and would
+    need its own FlexBuffers decode to go further); doc comments updated to
+    make that split explicit rather than implying `Flex` is unhandled
+    everywhere.
+
+    **A real, non-cosmetic bug surfaced while re-implementing this** (the
+    first attempt was lost to what looks like an uncommitted-changes revert
+    between turns — re-checked with `git status`/`git diff --stat` before
+    redoing anything, rather than assuming): linking failed with undefined
+    references to `flatbuffers::ClassicLocale::instance_`.
+    `flatbuffers/base.h` auto-enables the locale-independent
+    `strtod_l`/`strtoull_l` code path on Unix unconditionally (a plain
+    `#if defined(__unix__)`, not something our CMake setup controls), but
+    `ClassicLocale`'s static member is only *defined* in `util.cpp` — part
+    of the compiled `flatbuffers`/`flatc` library this project deliberately
+    never builds (see "FlatBuffers decode" in Design decisions: header-only
+    only, specifically to avoid pulling in `idl_parser.cpp`/`reflection.cpp`
+    and everything else that comes with `.fbs`/`flatc` support we don't
+    want). Fixed by forcing `FLATBUFFERS_LOCALE_INDEPENDENT=0` via
+    `target_compile_definitions` on `ob_dump_core` — falls back to plain
+    `strtod`/`strtoull`, which is fine here since nothing in this project
+    calls `setlocale()` (so "current" and "classic" C locale are the same
+    thing regardless). Re-verified against real ebalistyka data after the
+    fix: same 4 known diffs as every prior verification, zero new ones.
+21. **`scripts/ci/` — reusable, locally-runnable CI logic — done.** The same
+    build/test/package/changelog-extraction bash had drifted into two
+    (`cpp.yml`/`dart.yml`/`flutter.yml` vs. `release.yml`'s equivalent
+    jobs) or three copies each, and — since it only ever ran inside a
+    workflow step — every bug in it (missing `dart_lmdb2:fetch_native`,
+    the Windows import-lib collision, the changelog-extraction edge cases)
+    was only discoverable by pushing and reading a run's log. Pulled the
+    common logic into five standalone, `chmod +x`'d scripts instead:
+    `build-cpp.sh` (configure + build + `ctest`, taking `OB_DUMP_VERSION`
+    from the environment and extra CMake flags as `"$@"` — covers both
+    plain CI and release's per-arch matrix, e.g. macOS's
+    `CMAKE_OSX_ARCHITECTURES`), `package-cpp.sh` (the OS-conditional
+    binary-locating + tarball step, artifact name as `$1`),
+    `test-dart.sh`/`test-flutter.sh` (pub get + analyze [+ test/
+    `fetch_native`]), and `extract-changelog.sh` (version-section lookup
+    with dot-escaping and `[Unreleased]` fallback — deliberately scoped to
+    just the text extraction, not the git-tag "Full Changelog" footer or
+    dry-run pass/fail gating, since those are release-specific
+    orchestration rather than something worth testing standalone). Every
+    script was actually run locally against this repo (not just read) —
+    `build-cpp.sh` built and passed all 5 ctest cases, `package-cpp.sh`
+    produced a tarball with the expected 3 files, `extract-changelog.sh`
+    correctly extracted the real `0.1.0-alpha.0` section from
+    `dart/CHANGELOG.md` and correctly fell back to (empty)
+    `[Unreleased]` for a made-up version. All four workflow files were
+    rewired to call these scripts instead of inlining the bash, then
+    re-validated with both `python3 -c "import yaml..."` and a freshly
+    downloaded `actionlint` — clean on all of them.

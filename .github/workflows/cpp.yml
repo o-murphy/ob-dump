@@ -12,35 +12,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Configure
-        run: cmake -B build
-
-      - name: Build
-        run: cmake --build build --config Release --parallel
-
       # -C Release is a no-op on single-config generators (Linux/macOS
       # Makefiles) and required on Windows' multi-config Visual Studio
       # generator.
-      - name: Test
-        run: ctest --test-dir build --output-on-failure -C Release
+      - name: Build + test
+        shell: bash
+        run: ./scripts/ci/build-cpp.sh
 
-      # Single-config generators (Linux/macOS) put output directly under
-      # build/; Windows' multi-config Visual Studio generator nests it
-      # under build/Release/ — cover both without an OS-specific path.
-      # if-no-files-found: warn since not every glob matches on every OS
-      # (e.g. no .dll/.lib outside Windows).
+      - name: Package
+        shell: bash
+        run: ./scripts/ci/package-cpp.sh ${{ matrix.os }}
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
           name: ob-dump-${{ matrix.os }}
-          if-no-files-found: warn
-          path: |
-            include/ob_dump.h
-            build/ob_dump
-            build/ob_dump.exe
-            build/libob_dump.*
-            build/ob_dump.dll
-            build/ob_dump.lib
-            build/Release/ob_dump.exe
-            build/Release/ob_dump.dll
-            build/Release/ob_dump.lib
+          path: ob-dump-${{ matrix.os }}.tar.gz

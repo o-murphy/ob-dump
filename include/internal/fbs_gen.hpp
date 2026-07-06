@@ -24,8 +24,12 @@ namespace ob_dump_internal {
 // get an accessor regardless of declared type.
 //
 // `Flex` properties (PropertyType 13) are emitted as `[ubyte]` — the raw,
-// still-FlexBuffers-encoded bytes ob-dump itself doesn't decode either;
-// decoding those bytes further is left to whoever consumes this .fbs.
+// still-FlexBuffers-encoded bytes. ob_dump's own `--json`/`ob_dump()` *does*
+// decode these (fb_decode.cpp recurses into the equivalent JSON shape using
+// the same flexbuffers.h this project already depends on for FlatBuffers
+// itself), but that's a separate code path from this .fbs generator: a
+// `flatc`-generated reader in another language only gets the raw bytes back
+// and would need its own FlexBuffers decode to go further, same as before.
 //
 // Throws std::runtime_error on the same conditions Schema::parse() does.
 std::string generateFbs(const std::string& modelJson);
