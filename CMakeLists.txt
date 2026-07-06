@@ -21,10 +21,34 @@ include(FetchContent)
 # ── LMDB ──────────────────────────────────────────────────────────────────────
 # Upstream ships no CMake support; vendor mdb.c/midl.c and build them ourselves.
 # Same "source-buildable, no prebuilt binary" pattern as dart_lmdb2/dart_bclibc.
+#
+# Version pinned once, in LMDB_VERSION at the repo root — dart/src/lmdb/ and
+# flutter/src/lmdb/'s own vendored copies must be bumped to match by hand
+# (they're separately-published pub.dev packages, so they can't share this
+# FetchContent step); scripts/ci/verify-lmdb-vendor.sh checks all three stay
+# in sync.
+#
+# Must be a release tag (LMDB_MAJOR.MINOR.PATCH, e.g. LMDB_0.9.31) — never a
+# branch. Upstream (https://github.com/LMDB/lmdb) uses OpenLDAP's
+# release-engineering branch naming: `mdb.master`/`mdb.master3` are moving
+# development branches (mdb.master3 is the 0.9.x line's current tip, not a
+# fixed point), and `mdb.RE/0.9`/`mdb.RE/1.0` are release-engineering branches
+# that also move as patch releases land. Only the `LMDB_x.y.z` tags are
+# immutable.
+#
+# LMDB_VERSION itself is kept to a single bare line, no comments — CMake's
+# file(STRINGS) extracts printable-ASCII runs (it's meant for binary/text
+# blobs), so a non-ASCII character (e.g. an em dash) in a comment line
+# fragments it mid-line and can leak a fragment through as "the version",
+# even with a REGEX filter for lines starting with `#` (caught by actually
+# running this, not assumed).
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/LMDB_VERSION" _lmdb_version_lines LIMIT_COUNT 1)
+list(GET _lmdb_version_lines 0 LMDB_VERSION)
+
 FetchContent_Declare(
   lmdb
   GIT_REPOSITORY https://github.com/LMDB/lmdb.git
-  GIT_TAG        LMDB_0.9.31
+  GIT_TAG        ${LMDB_VERSION}
 )
 FetchContent_MakeAvailable(lmdb)
 

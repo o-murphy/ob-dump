@@ -115,11 +115,12 @@ its own README and `docs/BACKLOG.md` (phased-plan item 10) for why.
 
 **Using it from a Flutter app** (not a plain Dart script/CLI)? Depend on
 [`flutter/`](flutter) (`ob_dump_reader_flutter`) instead — same API,
-re-exported unchanged, but pulls in `flutter_lmdb2` so Flutter's own plugin
-tooling bundles the native LMDB library into your Android/iOS/macOS app
-properly (`ob_dump_reader`'s own `dart_lmdb2` dependency only fetches a
-binary into your pub cache, which isn't part of a shipped mobile app). See
-`flutter/README.md` and `docs/BACKLOG.md` (phased-plan item 17).
+re-exported unchanged, but it's a real Flutter plugin (`ffiPlugin: true`)
+that compiles and bundles the native LMDB library for you on every platform
+(Android/iOS/Linux/macOS/Windows). `ob_dump_reader`'s own
+`dart run ob_dump_reader:build` only produces a library for the current
+desktop machine, which isn't part of a shipped mobile app. See
+`flutter/README.md` and `docs/BACKLOG.md` (phased-plan items 17 and 22).
 
 ## Building your own reader in another language
 
@@ -127,8 +128,12 @@ binary into your pub cache, which isn't part of a shipped mobile app). See
 need any FFI binding to this C++ core at all, as long as *some* LMDB binding
 exists for your language (common — LMDB is a popular embedded store):
 
-1. **Get an LMDB binding for your language.** E.g. `dart_lmdb2` for Dart,
-   `py-lmdb` for Python, the `lmdb` crate for Rust, `lmdbjava` for the JVM.
+1. **Get an LMDB binding for your language.** `dart/` (see above) vendors
+   and builds LMDB itself rather than depending on a third-party binding
+   package — see `docs/BACKLOG.md` item 22 for why (a real AOT-compiled-build
+   bug found in the binding package it used to depend on). For other
+   languages: `py-lmdb` for Python, the `lmdb` crate for Rust, `lmdbjava`
+   for the JVM.
 2. **Generate the schema artifacts from this project:**
    ```sh
    ob_dump --schema objectbox-model.json -o schema.json  # entityId -> name/shape
