@@ -2,6 +2,8 @@
 
 ![GitHub License](https://img.shields.io/github/license/o-murphy/ob-dump)
 ![GitHub Release](https://img.shields.io/github/v/release/o-murphy/ob-dump)
+![Dart Pub Version](https://img.shields.io/pub/v/ob_dump_reader?logo=dart)
+![Flutter Pub Version](https://img.shields.io/pub/v/ob_dump_reader_flutter?logo=flutter)
 
 
 Reads an [ObjectBox](https://objectbox.io/) LMDB store (`data.mdb`) directly
