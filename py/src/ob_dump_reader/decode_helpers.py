@@ -57,8 +57,42 @@ def try_parse_json_string(s: str) -> Any:
         return s
 
 
+def _flex_ref_to_native(ref: Any) -> Any:
+    # flatbuffers.flexbuffers.Ref has no `.json`/`str()` serialization of its
+    # own (an earlier version of this function assumed `str(root)` gave JSON
+    # — it gives a debug repr like "Ref(buf[21:], ...)", not decodable data;
+    # caught by actually calling this against real FlexBuffers bytes, not
+    # assumed). Is*/As* are properties, not methods.
+    if ref.IsNull:
+        return None
+    if ref.IsBool:
+        return ref.AsBool
+    if ref.IsInt:
+        return ref.AsInt
+    if ref.IsFloat:
+        return ref.AsFloat
+    if ref.IsString:
+        return ref.AsString
+    if ref.IsBlob:
+        return bytes_to_hex(ref.AsBlob)
+    if ref.IsMap:
+        m = ref.AsMap
+        return {
+            key.AsKey: _flex_ref_to_native(value)
+            for key, value in zip(m.Keys, m.Values)
+        }
+    if ref.IsVector or ref.IsTypedVector or ref.IsFixedTypedVector:
+        vec = (
+            ref.AsVector
+            if ref.IsVector
+            else ref.AsTypedVector
+            if ref.IsTypedVector
+            else ref.AsFixedTypedVector
+        )
+        return [_flex_ref_to_native(vec[i]) for i in range(len(vec))]
+    raise ValueError(f"Unsupported FlexBuffers value: {ref}")
+
+
 def decode_flex(b: Buffer) -> Any:
-    safe_bytes = bytes(b)
-    root = flexbuffers.GetRoot(safe_bytes)
-    json_str = root.json if hasattr(root, "json") else str(root)
-    return json.loads(json_str)
+    root = flexbuffers.GetRoot(bytes(b))
+    return _flex_ref_to_native(root)

@@ -25,10 +25,14 @@ classifiers = [
 dependencies = ["flatbuffers>=25.12.19", "lmdb>=2.2.1"]
 dynamic = ["version"]
 
+[project.scripts]
+ob-dump-reader = "ob_dump_reader.__main__:main"
+
 [project.urls]
 "Homepage" = "https://github.com/o-murphy/ob-dump"
 "Bug Reports" = "https://github.com/o-murphy/ob-dump/issues"
 "Source" = "https://github.com/o-murphy/ob-dump"
+"Changelog" = "https://github.com/o-murphy/ob-dump/blob/main/py/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -44,7 +48,7 @@ orjson = ['orjson==3.11.9']
 testpaths = ["tests"]
 
 [tool.ruff]
-include = ["pyproject.toml", "src/**/*.py"]
+include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py"]
 exclude = [
     ".git",
     "__pypackages__",
@@ -52,13 +56,10 @@ exclude = [
     ".ruff_cache",
     "venv",
     ".venv",
-    "__init__.py",
 ]
 
 [dependency-groups]
 dev = [
-    "protovalidate>=0.6.0",
-    "pydantic>=2.13.3",
     "orjson>=3.11.8",
     "pytest>=9.0.3",
     "ruff>=0.12.11",

@@ -1002,6 +1002,99 @@ decoder's output exactly.
       (see above) updated to match; no functional Dependabot config change
       since neither package had a real pub.dev LMDB dependency to track in
       the first place once this landed.
+23. **`py/` package (`ob-dump-reader`) — introduced, then brought up to the
+    same bar as `dart/`/`flutter/`.** Same pattern as item 10 (Dart): a
+    standalone PyPI package doing LMDB traversal + ObjectBox key parsing via
+    [`py-lmdb`](https://github.com/jnwatson/py-lmdb) (a mature, actively
+    maintained binding — no reason to vendor LMDB the way `dart/` does, see
+    item 22), with decoding left to official `flatc --python` output. Also
+    ships an `ob_dump_reader.aio` module mirroring the same API as
+    `async`/`await` coroutines, built on py-lmdb's own executor-based async
+    wrapper.
+
+    This package existed before it had ever been exercised end-to-end —
+    a full pass (triggered by "put the Python package in order") found and
+    fixed several real, previously-undiscovered bugs, each confirmed by
+    actually running the code, not by reading it:
+    - **`decode_flex()` crashed on every real call.** Assumed
+      `flatbuffers.flexbuffers.Ref` had a `.json` property; it doesn't
+      (`hasattr` was always `False`), so it fell back to `str(root)` — a
+      debug repr like `"Ref(buf[21:], parent_width=1, ...)"`, not JSON —
+      and `json.loads()` on that raised immediately. Fixed with a proper
+      recursive `Ref` → native-Python-object converter (also had to
+      discover, empirically, that `Is*`/`As*` are properties on this API,
+      not methods — `ref.IsMap()` raises `TypeError: 'bool' object is not
+      callable`), matching the same map/vector/scalar/blob handling as the
+      C++ core's `flexToJson` and the Dart package's `decodeFlex`.
+    - **`ob_dump_reader.aio` couldn't be imported at all** —
+      `from ob_dump_reader.decode_helpers import K_KEY_TYPE_DATA, ...`
+      referenced a name that had never existed in that module. Root cause:
+      the constant was defined once in `__init__.py` as `KEY_TYPE_DATA`
+      (no `K_` prefix) and never actually shared — fixed by extracting
+      `KEY_TYPE_DATA`/`KEY_TYPE_RELATION`/relation-direction constants into
+      one `_constants.py` both modules import, so this can't drift again.
+      Also fixed a real typo along the way: `RELATION_DIRECTION_FFORWARD`
+      → `RELATION_DIRECTION_FORWARD`.
+    - **`ob_dump_reader.aio` misused `lmdb.aio`'s actual API**, even past
+      the import fix: `AsyncEnvironment(path, map_size=..., ...)` isn't how
+      one is constructed — reading `lmdb.aio`'s own source showed it wraps
+      an already-open `lmdb.Environment` via `lmdb.aio.wrap(env)` instead.
+      Separately, `AsyncCursor` has no `__aiter__`, so the original
+      `async for key, value in cursor` was never callable; its `iternext()`
+      alternative also fully materializes every remaining entry into a
+      list in one executor call, which would mean loading the *entire rest
+      of the database* into memory before the first callback fires —
+      replaced with an explicit `first()`/`next()`/`item()` step loop
+      instead (verified with a real fixture that this continues from
+      `set_range()`'s position rather than resetting, same as the sync
+      `lmdb.Cursor`).
+    - **`read_objectbox_to_many_targets()` was a no-op stub**, sync and
+      async both — opened an environment and did nothing else, silently
+      returning `None` despite being part of the public API (`__all__`
+      included it). Implemented for real against the same 12-byte
+      relation-key format documented in item "ToMany relations" above
+      (`Cursor.set_range()` to the relation/source-id prefix, walking
+      forward while the prefix still matches, forward direction only).
+    - `__main__.py` hardcoded a developer's own local database path
+      (`/home/murphy/.local/share/...`) — replaced with a real
+      `argparse`-based CLI, plus a `[project.scripts]` entry point
+      (`ob-dump-reader`).
+    - Dead, commented-out "write transaction to initialize the root
+      handle" code removed — the same `dart_lmdb2`-era misconception item
+      22 already resolved for Dart, independently present here too:
+      `readonly=True` alone is sufficient, LMDB's MVCC design is exactly
+      why.
+    - Added `tests/` (15 tests, `pytest`) — the package had none at all
+      despite `pytest` already being a declared dev dependency and
+      `testpaths = ["tests"]` already configured; every fix above is now
+      covered by a fixture-based test that would have caught it.
+    - Removed unused `protovalidate`/`pydantic` dev dependencies (zero
+      references anywhere in `src/`) — pulled in 16 transitive packages
+      for nothing; `uv lock` after removal dropped from 650 to under 100
+      lines.
+    - `.github/workflows/pytest.yml` filled in (previously an empty stub)
+      and `scripts/ci/test-python.sh` added, matching the
+      `test-dart.sh`/`test-flutter.sh` pattern from item 21. Separately,
+      `release.yml`'s own `test-python` job was found using
+      `subosito/flutter-action@v2` (copy-pasted from `test-flutter` without
+      swapping the toolchain-setup step) instead of `astral-sh/setup-uv`;
+      fixed, and wired into the same gate every other build/test leg feeds:
+      a new `tests-passed` job (`needs: [build-cpp, test-dart, test-flutter,
+      test-python]`) that `bump-versions` alone depends on, rather than
+      every downstream job repeating the full leg list — added on request,
+      once adding `test-python` directly to `bump-versions`' own `needs:`
+      made that repetition obvious. `publish-pypi`'s checkout was missing
+      `fetch-depth: 0` — `setuptools_scm` derives the package version from
+      the git tag via `git describe`, which a shallow checkout can leave
+      unreachable, silently falling back to `pyproject.toml`'s
+      `fallback_version` (`0.0.0.dev0`) instead of the real release
+      version.
+    - `.github/dependabot.yml`'s newly-added `py/` entry used
+      `package-ecosystem: "pip"`, which doesn't understand `uv.lock` (only
+      `requirements.txt`/`Pipfile`/plain `pyproject.toml`) — confirmed via
+      GitHub's own Dependabot changelog that `"uv"` got native ecosystem
+      support (understanding `pyproject.toml` + `uv.lock` directly) in
+      March 2025; switched to that.
 
 ## Integrity & Licensing
 

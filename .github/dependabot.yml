@@ -1,5 +1,21 @@
 version: 2
 updates:
+
+  # ob-dump-reader's dependencies (flatbuffers, lmdb) and dev dependencies
+  # (orjson, pytest, ruff). "uv" (not "pip") since this package is managed
+  # via uv.lock — "pip" doesn't understand that lockfile format, only
+  # requirements.txt/Pipfile/plain pyproject.toml (confirmed via GitHub's
+  # own Dependabot changelog: uv got native ecosystem support in March
+  # 2025, understanding pyproject.toml + uv.lock directly).
+  - package-ecosystem: "uv"
+    directory: "py/"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
   # dart/ob_dump_reader's dependencies (ffi, path) and dev dependencies
   # (test, flat_buffers). LMDB itself isn't a pub.dev dependency — it's
   # vendored source (src/lmdb/), pinned via LMDB_VERSION at the repo root,
