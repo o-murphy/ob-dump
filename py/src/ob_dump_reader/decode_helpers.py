@@ -1,5 +1,9 @@
 from collections.abc import Buffer
-import json
+
+try:
+    import orjson as json
+except ImportError:
+    import json
 from typing import Any
 from flatbuffers import flexbuffers
 

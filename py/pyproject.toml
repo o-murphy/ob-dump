@@ -4,12 +4,62 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ob-dump-reader"
-version = "0.1.0a0"
-description = "Add your description here"
+authors = [{ name = "o-murphy" }]
+description = "Minimal ObjectBox LMDB reader toolkit"
 readme = "README.md"
 requires-python = ">=3.11"
+keywords = ["objectbox", "lmdb", "flatbuffers"]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Programming Language :: Python",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
 dependencies = ["flatbuffers>=25.12.19", "lmdb>=2.2.1"]
+dynamic = ["version"]
+
+[project.urls]
+"Homepage" = "https://github.com/o-murphy/ob-dump"
+"Bug Reports" = "https://github.com/o-murphy/ob-dump/issues"
+"Source" = "https://github.com/o-murphy/ob-dump"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["ob_dump_reader*"]
+
+[tool.setuptools_scm]
+fallback_version = "0.0.0.dev0"
+
+[project.optional-dependencies]
+orjson = ['orjson==3.11.9']
+
+[tool.pytest]
+testpaths = ["tests"]
+
+[tool.ruff]
+include = ["pyproject.toml", "src/**/*.py"]
+exclude = [
+    ".git",
+    "__pypackages__",
+    "*.egg-info",
+    ".ruff_cache",
+    "venv",
+    ".venv",
+    "__init__.py",
+]
+
+[dependency-groups]
+dev = [
+    "protovalidate>=0.6.0",
+    "pydantic>=2.13.3",
+    "orjson>=3.11.8",
+    "pytest>=9.0.3",
+    "ruff>=0.12.11",
+]

@@ -11,6 +11,13 @@ add_library(lmdb SHARED
 )
 set_target_properties(lmdb PROPERTIES
   OUTPUT_NAME "lmdb"
+  # MSVC DLLs export no symbols by default (unlike ELF .so) — mdb.c/midl.c
+  # have no __declspec(dllexport) decorations of their own, so without
+  # this every mdb_* function is invisible to GetProcAddress/dart:ffi's
+  # DynamicLibrary.lookup ("Failed to lookup symbol 'mdb_env_create'"),
+  # caught by a real Windows CI run, not assumed. Auto-generates a .def
+  # exporting every public symbol, same effect as hand-writing one.
+  WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
 
 if(UNIX AND NOT APPLE)

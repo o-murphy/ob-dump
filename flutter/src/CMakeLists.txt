@@ -15,6 +15,14 @@ add_library(lmdb SHARED
 )
 set_target_properties(lmdb PROPERTIES
   OUTPUT_NAME "lmdb"
+  # MSVC DLLs export no symbols by default (unlike ELF .so) — mdb.c/midl.c
+  # have no __declspec(dllexport) decorations of their own, so without
+  # this every mdb_* function is invisible to GetProcAddress/dart:ffi's
+  # DynamicLibrary.lookup ("Failed to lookup symbol 'mdb_env_create'"),
+  # caught by a real Windows CI run against dart/'s identical CMakeLists.txt,
+  # not assumed. Auto-generates a .def exporting every public symbol, same
+  # effect as hand-writing one. Harmless on non-Windows platforms.
+  WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
 
 # mdb.c uses pthread_mutex/pthread-specific data. Android's NDK C library
