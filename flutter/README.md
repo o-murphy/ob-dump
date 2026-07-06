@@ -32,6 +32,43 @@ whatever app depends on this package — transitively, without that app's own
 here needs to import `flutter_lmdb2` directly for that to work; it just
 needs to be present as a dependency.
 
+## Known limitation: crashes in a compiled release build on Linux/Windows
+
+**Confirmed empirically** (built a scratch Flutter Linux app, ran
+`flutter build linux --release`, copied only the resulting bundle to an
+isolated directory with no source project or pub cache — the same shape a
+distributed app install has — and ran it): `dart_lmdb2`'s own native-library
+path resolution (`LMDBNative._resolveLibraryPath()`) uses
+`Isolate.resolvePackageUriSync()`, which only works in JIT mode (`dart run`/
+`flutter run`) — a compiled AOT release build throws
+`Unsupported operation: Isolate.resolvePackageUriSync` immediately on the
+first LMDB open. This affects **every** compiled Flutter Linux/Windows
+release build depending on `dart_lmdb2` (directly or via this package),
+regardless of how `liblmdb.so` itself was obtained.
+
+This is not something `ob_dump_reader_flutter` (or `ob_dump_reader`) can fix
+from its position as a plain API consumer of `dart_lmdb2` — the fix belongs
+either upstream in [`dart_lmdb2`](https://github.com/grammatek/dart_lmdb2)
+or in whatever's building the final app. `dart run`/`flutter run` (JIT) is
+unaffected — everything already verified in
+[`ob_dump_reader`](../dart/README.md) via `dart run` remains accurate.
+
+Platform notes, by code inspection (only Linux was empirically built and
+run — see above; the rest is reasoning about `dart_lmdb2`'s source, not
+independently verified the same way):
+- **iOS**: unaffected — `_openLibrary()` returns `DynamicLibrary.process()`
+  unconditionally for `Platform.isIOS`, never reaching the buggy
+  `_resolveLibraryPath()` code path at all.
+- **macOS**: *likely* unaffected when used as a Flutter plugin — same
+  `DynamicLibrary.process()` shortcut, but gated on a runtime
+  `_isStaticallyLinked()` symbol-lookup check rather than being
+  unconditional like iOS.
+- **Android**: *no such bypass exists in the source* — `_openLibrary()`
+  takes the same `_resolveLibraryPath()` path unconditionally as Linux/
+  Windows do, which suggests a compiled release APK may hit the identical
+  crash. Not empirically tested (would need an actual Android build/run);
+  flagged here rather than assumed fine.
+
 ## Usage
 
 Identical to [`ob_dump_reader`](../dart/README.md) — see that package's
