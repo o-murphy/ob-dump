@@ -1,12 +1,12 @@
 name: ob_dump_reader_flutter
 description: >
-  Flutter-ready variant of ob_dump_reader — identical API, but depends on
-  flutter_lmdb2 instead of dart_lmdb2 so the native LMDB library is properly
-  bundled by Flutter's own plugin tooling on Android/iOS/macOS (dart_lmdb2's
-  own fetch_native download lands in the pub cache, which isn't part of a
-  shipped app bundle on mobile). Use this from a Flutter app; use
-  ob_dump_reader directly from plain Dart (CLI scripts, server, tests).
-version: 0.1.0-alpha.0
+  Flutter-ready variant of ob_dump_reader — identical API, bundling the same
+  purpose-built, vendored-LMDB dart:ffi binding as a real Flutter plugin
+  (Android/iOS/Linux/macOS/Windows) so the compiled native library ships
+  inside the app instead of needing a separate native-library dependency.
+  Use this from a Flutter app; use ob_dump_reader directly from plain Dart
+  (CLI scripts, server, tests).
+version: 0.2.0-alpha.0
 homepage: https://github.com/o-murphy/ob-dump
 # TODO(release): remove this line together with the path dep below —
 # `flutter analyze` actually *fails* (exit 1, not just a warning; verified
@@ -26,4 +26,22 @@ dependencies:
   # packages' versions must stay in lockstep; CI enforces this).
   ob_dump_reader:
     path: ../dart
-  flutter_lmdb2: ^0.9.5
+
+# `ffiPlugin: true` (not `pluginClass:`) — this plugin has no method-channel
+# surface at all, only native code to build and bundle for dart:ffi. That's
+# exactly what `ffiPlugin` is for (confirmed against the official
+# `flutter create --template=plugin_ffi` scaffold) — no Java/Kotlin/Swift/
+# ObjC registration class needed on any platform.
+flutter:
+  plugin:
+    platforms:
+      android:
+        ffiPlugin: true
+      ios:
+        ffiPlugin: true
+      linux:
+        ffiPlugin: true
+      macos:
+        ffiPlugin: true
+      windows:
+        ffiPlugin: true

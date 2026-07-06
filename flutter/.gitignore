@@ -3,3 +3,19 @@
 pubspec.lock
 .flutter-plugins-dependencies
 .flutter-plugins
+
+# Generated from ../CHANGELOG.md by scripts/ci/sync_changelogs.py, only
+# ephemerally, right before publish — see that file's own header.
+CHANGELOG.md
+
+# Native build artifacts (CMake/Gradle/Xcode) — a local path-dependency
+# build can write these directly into this package's own directory tree,
+# not just the consuming app's build/ dir.
+/build/
+.cxx/
+.gradle/
+android/build/
+android/.cxx/
+android/local.properties
+*.iml
+.idea/

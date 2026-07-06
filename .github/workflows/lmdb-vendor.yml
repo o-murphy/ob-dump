@@ -1,0 +1,19 @@
+name: LMDB vendor consistency
+
+# The C++ core (CMakeLists.txt's FetchContent), dart/src/lmdb/, and
+# flutter/src/lmdb/ all pin the same LMDB release independently (see
+# LMDB_VERSION at the repo root for why not a git submodule — three
+# separately-published/built consumers, no reliable cross-boundary path).
+# This fails loudly the moment one drifts — either the pinned version
+# disagrees between locations, or a vendored file was hand-edited without
+# bumping LMDB_VERSION to match.
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify vendored LMDB copies match LMDB_VERSION and upstream
+        run: ./scripts/ci/verify-lmdb-vendor.sh --full

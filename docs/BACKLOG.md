@@ -49,7 +49,7 @@ compatibility, not corruption.
 |---|---|---|
 | Language | Pure C public ABI; implementation may use C++ where a dependency requires it (FlatBuffers' generic `Table`/`Verifier` API and nlohmann/json are C++ header-only libraries) | Public surface must be trivially bindable via CFFI from any language (Dart `dart:ffi`, Python `ctypes`/`cffi`, Go `cgo`, JVM JNI, Swift...). C++-ness is fully internal, hidden behind `extern "C"`. |
 | Build | CMake + `FetchContent` | No network needed at *use* time, only at first configure; each dependency vendors/builds from source (Flathub/GPL-safe — no prebuilt binaries). |
-| LMDB | Vendor `mdb.c`/`midl.c` from `LMDB/lmdb` upstream, compiled ourselves (no CMake shipped upstream) | Same trusted, source-buildable pattern as `dart_lmdb2`/`dart_bclibc` already used in the app this project was born out of. |
+| LMDB | Vendor `mdb.c`/`midl.c` from `LMDB/lmdb` upstream, compiled ourselves (no CMake shipped upstream) | Same trusted, source-buildable pattern as `dart_bclibc` (the ballistics engine binding) already uses in the app this project was born out of — `dart/` and `flutter/` (below) vendor and build the same LMDB source themselves too, rather than depending on a third-party binding package. |
 | FlatBuffers decode | Official `flatbuffers::Table` + `flatbuffers::Verifier` (header-only C++), driven by slot numbers computed at runtime from `objectbox-model.json` — **no `.fbs` schema, no `flatc` codegen** | Gives us battle-tested bounds-checked reads for free instead of hand-rolling and re-testing our own overflow checks in C. Still zero external schema files — same "dynamic" approach as the Dart PoC, just backed by the official reader instead of hand-rolled offset math. |
 | JSON | `nlohmann/json` (header-only) | Well-tested, ergonomic C++ JSON construction; avoids hand-rolled string escaping bugs. |
 | Copy strategy | Zero-copy | LMDB's `mdb_get`/cursor API returns pointers directly into the mmap'd file within a read txn — never copied. FlatBuffers' `Table` API reads fields directly off that same pointer. The **only** allocation in the whole pipeline is the final output JSON string. |
@@ -787,23 +787,18 @@ decoder's output exactly.
       real Windows CI run is still the only way to confirm the actual fix,
       not yet done).
 
-    **`workflow_dispatch` dry-run support**, added specifically so the
-    whole pipeline shape can be validated without pushing a real tag:
-    a manual "Run workflow" takes a `tag` input (simulated, doesn't need to
-    exist) and a `dry_run` boolean (**defaults to `true`** — so clicking
-    the button with default options can never accidentally publish
-    anything). `IS_DRY_RUN` gates every side-effecting step individually
-    (version-bump commit/push, GitHub release creation, both `pub publish
-    --force` calls) while leaving build/test/package/changelog-extraction
-    running unconditionally, so a dry run still validates as much of the
-    real pipeline as it safely can. One thing a dry run *can't* meaningfully
-    exercise: `publish-flutter`'s dependency swap, since it points at
-    whatever `publish-dart` "just published" — on a dry run nothing was
-    actually published, so pub.dev has no such version to resolve; that
-    step (and the rest of the job after it) is skipped rather than left to
-    fail for an uninteresting reason, while the job itself (and its
-    required-reviewers environment gate) still runs, since triggering that
-    gate correctly is itself part of what's worth validating.
+    **`workflow_dispatch` dry-run support — added, then removed.** Originally
+    added so the whole pipeline shape could be validated without pushing a
+    real tag: a manual "Run workflow" took a `tag` input (simulated, didn't
+    need to exist) and a `dry_run` boolean (defaulting to `true`), with
+    `IS_DRY_RUN` gating every side-effecting step individually (version-bump
+    commit/push, GitHub release creation, both `pub publish --force` calls).
+    Removed by request once the pipeline had been dry-run-validated enough
+    (see below) to trust for real — `release.yml` is now triggered solely by
+    `push: tags: v*`, with no `workflow_dispatch` input and no `IS_DRY_RUN`
+    conditionals left anywhere; every step in every job always runs for
+    real. Re-validated with `actionlint` after removal — clean, same as
+    before.
 
     **Validated so far, concretely, not just by review:**
     `actionlint` (a real GitHub-Actions-specific linter, downloaded via
@@ -895,6 +890,262 @@ decoder's output exactly.
     rewired to call these scripts instead of inlining the bash, then
     re-validated with both `python3 -c "import yaml..."` and a freshly
     downloaded `actionlint` — clean on all of them.
+22. **`dart/` and `flutter/` drop `dart_lmdb2`/`flutter_lmdb2` for a
+    self-vendored `dart:ffi` binding — done, supersedes item 17.** Two
+    concrete problems with the `dart_lmdb2`/`flutter_lmdb2` pair, both
+    confirmed empirically (build a scratch Flutter app, run
+    `flutter build linux --release`, copy only the output bundle to an
+    isolated directory with no source project/pub cache, run it directly):
+    `dart_lmdb2`'s own native-library path resolution
+    (`Isolate.resolvePackageUriSync()`) throws `UnsupportedError` outright
+    in any compiled AOT release build — breaks every compiled Flutter
+    Linux/Windows release depending on it, regardless of how `liblmdb.so`
+    was obtained; and `flutter_lmdb2` has no Linux or Windows support at all
+    as published (both commented out in its own `pubspec.yaml`).
+
+    Fix: both packages now vendor the same LMDB source the C++ core does
+    (`src/lmdb/mdb.c`/`midl.c`/`lmdb.h`/`midl.h`, duplicated between
+    `dart/` and `flutter/` since they're separately-published pub.dev
+    packages with no reliable cross-package relative path) and bind to it
+    directly via a small hand-written `dart:ffi` layer
+    (`dart/lib/src/lmdb_bindings.dart`) instead of depending on a
+    third-party binding package — the same "vendor and build ourselves"
+    philosophy the "LMDB" row in Design decisions already uses for the
+    C++ core.
+    - `dart/`'s own loader (`lib/src/lmdb_native_library.dart`) tries
+      `package:` URI resolution first (unchanged `dart run`/`flutter run`
+      behaviour), then falls back per-platform to wherever each platform's
+      real native-bundling convention places the library — confirmed
+      against the official `flutter create --template=plugin_ffi` scaffold
+      (generated it and read its own loading code), not guessed. Notably:
+      macOS/iOS load a bare `<PodName>.framework/<PodName>` reference
+      resolved by dyld's bundle-embedded search paths, *not*
+      `DynamicLibrary.process()` — an earlier draft of this loader assumed
+      the latter and was wrong, caught by reading that same reference
+      scaffold before shipping it.
+    - `flutter/` is now a real Flutter plugin (`ffiPlugin: true` — no
+      method-channel surface at all, confirmed against the same official
+      scaffold rather than using `pluginClass:`) for all five platforms.
+      CMake (Linux/Windows, and Android via the NDK) all `add_subdirectory`
+      one shared `flutter/src/CMakeLists.txt`; iOS/macOS use a CocoaPods
+      podspec plus tiny forwarder `.c` files (`Classes/mdb.c` including
+      `../../src/lmdb/mdb.c` — podspec globs can't cross `../`, this is the
+      same trick the official scaffold's own reference example uses).
+    - Opening the LMDB environment itself `MDB_RDONLY` (not just the
+      transaction) — pointed out during review — turned out to remove the
+      *entire* copy-to-temp/`readObjectBoxRecordsUnsafe` distinction from
+      item 13, not just work around `dart_lmdb2`'s dbi-handle requirement:
+      LMDB's MVCC design already lets any number of readers run safely
+      alongside one concurrent writer, in any process, so there was never
+      a need for a write-capable environment at all once we controlled the
+      binding ourselves. `readObjectBoxRecords`/`readToManyTargets` now
+      read the original files directly, in place; `readObjectBoxRecordsUnsafe`/
+      `readToManyTargetsUnsafe` are gone (no distinction left to make).
+    - **Verified empirically, not just built:** Linux — real
+      `flutter build linux --release`, isolated-bundle run, real ObjectBox
+      data (18 records, matches every prior verification). Android — real
+      debug/release APK on a real emulator (Pixel 9, Android 15), all
+      three ABIs present, on-device write+read round trip confirmed via
+      logcat. Windows/macOS/iOS — written to match the official
+      `plugin_ffi` scaffold exactly (diffed against a freshly generated
+      copy), **not** built on real hardware — no Windows or macOS/Xcode
+      toolchain in this environment; flagged as such in both packages'
+      READMEs/CHANGELOGs rather than assumed working.
+    - **LMDB version pinning, three independent copies, no git
+      submodule:** the C++ core's `FetchContent`, `dart/src/lmdb/`, and
+      `flutter/src/lmdb/` all need the same LMDB release. A submodule was
+      considered and rejected: it'd still be three separate
+      submodule entries (pub.dev packages can't share content outside
+      their own directory), gains nothing over a version-pin file for
+      keeping them in sync, and adds a real failure mode of its own — an
+      uninitialized submodule silently publishes an *empty* directory to
+      pub.dev. Instead: `LMDB_VERSION` at the repo root pins one tag as a
+      single bare line (must be a release tag like `LMDB_0.9.31` — upstream
+      uses OpenLDAP release-engineering branch names like `mdb.master3`/
+      `mdb.RE/0.9` for moving development lines, confirmed via
+      `git ls-remote`, never a fixed point); the C++ core's
+      `CMakeLists.txt` reads it via `file(STRINGS ... LIMIT_COUNT 1)`
+      (plain `file(STRINGS)` without `LIMIT_COUNT` extracts printable-ASCII
+      *runs*, not lines — a stray em dash in an earlier, comment-laden
+      draft of this file fragmented it mid-line and leaked a text fragment
+      through as "the version", caught by actually running the configure
+      step, not assumed). `scripts/ci/verify-lmdb-vendor.sh` checks all
+      three stay in sync: a fast default mode reads
+      `MDB_VERSION_{MAJOR,MINOR,PATCH}` straight out of each vendored
+      `lmdb.h` (LMDB's own header embeds its release version — no separate
+      per-copy version file needed) and compares against `LMDB_VERSION`;
+      `--full` additionally clones the pinned tag fresh and diffs it
+      byte-for-byte against both vendored copies, to catch a hand-edited
+      vendored file that macro comparison alone can't see. Wired into a
+      new `.github/workflows/lmdb-vendor.yml`, `push`/`pull_request`, using
+      `--full` since CI always has network. Both modes run and pass
+      locally against the real pinned tag.
+    - **Offline/Flatpak-safe by construction, not by exception:** grepped
+      every native build file this item touches
+      (`flutter/{linux,windows,src}/CMakeLists.txt`,
+      `flutter/android/build.gradle`, `flutter/{ios,macos}/*.podspec`,
+      `dart/src/lmdb/CMakeLists.txt`, `dart/lib/src/build_util.dart`) for
+      `FetchContent`/`curl`/`wget`/`git clone`/`git_repository`/bare
+      `http(s)://` — zero matches. The vendored LMDB source travels with
+      each package's own pub.dev tarball, the same as any other file in
+      it; no `flutpak` `foreign_deps.json` entry is needed for
+      `ob_dump_reader`/`ob_dump_reader_flutter` at all, unlike the C++
+      core's own LMDB `FetchContent` (still a live network fetch at CMake
+      configure time — out of scope for this item, tracked separately if
+      it ever needs the same treatment).
+    - CI (`scripts/ci/test-dart.sh`) updated to match: the stale
+      `dart run dart_lmdb2:fetch_native` step (see item 21 — CI already
+      called this out as a script this project depends on) is replaced
+      with `dart run ob_dump_reader:build`, this package's own native
+      build step. `.github/dependabot.yml`'s comments and one stale
+      `dart_lmdb2` precedent-citation in the "LMDB" Design-decisions row
+      (see above) updated to match; no functional Dependabot config change
+      since neither package had a real pub.dev LMDB dependency to track in
+      the first place once this landed.
+23. **`py/` package (`ob-dump-reader`) — introduced, then brought up to the
+    same bar as `dart/`/`flutter/`.** Same pattern as item 10 (Dart): a
+    standalone PyPI package doing LMDB traversal + ObjectBox key parsing via
+    [`py-lmdb`](https://github.com/jnwatson/py-lmdb) (a mature, actively
+    maintained binding — no reason to vendor LMDB the way `dart/` does, see
+    item 22), with decoding left to official `flatc --python` output. Also
+    ships an `ob_dump_reader.aio` module mirroring the same API as
+    `async`/`await` coroutines, built on py-lmdb's own executor-based async
+    wrapper.
+
+    This package existed before it had ever been exercised end-to-end —
+    a full pass (triggered by "put the Python package in order") found and
+    fixed several real, previously-undiscovered bugs, each confirmed by
+    actually running the code, not by reading it:
+    - **`decode_flex()` crashed on every real call.** Assumed
+      `flatbuffers.flexbuffers.Ref` had a `.json` property; it doesn't
+      (`hasattr` was always `False`), so it fell back to `str(root)` — a
+      debug repr like `"Ref(buf[21:], parent_width=1, ...)"`, not JSON —
+      and `json.loads()` on that raised immediately. Fixed with a proper
+      recursive `Ref` → native-Python-object converter (also had to
+      discover, empirically, that `Is*`/`As*` are properties on this API,
+      not methods — `ref.IsMap()` raises `TypeError: 'bool' object is not
+      callable`), matching the same map/vector/scalar/blob handling as the
+      C++ core's `flexToJson` and the Dart package's `decodeFlex`.
+    - **`ob_dump_reader.aio` couldn't be imported at all** —
+      `from ob_dump_reader.decode_helpers import K_KEY_TYPE_DATA, ...`
+      referenced a name that had never existed in that module. Root cause:
+      the constant was defined once in `__init__.py` as `KEY_TYPE_DATA`
+      (no `K_` prefix) and never actually shared — fixed by extracting
+      `KEY_TYPE_DATA`/`KEY_TYPE_RELATION`/relation-direction constants into
+      one `_constants.py` both modules import, so this can't drift again.
+      Also fixed a real typo along the way: `RELATION_DIRECTION_FFORWARD`
+      → `RELATION_DIRECTION_FORWARD`.
+    - **`ob_dump_reader.aio` misused `lmdb.aio`'s actual API**, even past
+      the import fix: `AsyncEnvironment(path, map_size=..., ...)` isn't how
+      one is constructed — reading `lmdb.aio`'s own source showed it wraps
+      an already-open `lmdb.Environment` via `lmdb.aio.wrap(env)` instead.
+      Separately, `AsyncCursor` has no `__aiter__`, so the original
+      `async for key, value in cursor` was never callable; its `iternext()`
+      alternative also fully materializes every remaining entry into a
+      list in one executor call, which would mean loading the *entire rest
+      of the database* into memory before the first callback fires —
+      replaced with an explicit `first()`/`next()`/`item()` step loop
+      instead (verified with a real fixture that this continues from
+      `set_range()`'s position rather than resetting, same as the sync
+      `lmdb.Cursor`).
+    - **`read_objectbox_to_many_targets()` was a no-op stub**, sync and
+      async both — opened an environment and did nothing else, silently
+      returning `None` despite being part of the public API (`__all__`
+      included it). Implemented for real against the same 12-byte
+      relation-key format documented in item "ToMany relations" above
+      (`Cursor.set_range()` to the relation/source-id prefix, walking
+      forward while the prefix still matches, forward direction only).
+    - `__main__.py` hardcoded a developer's own local database path
+      (`/home/murphy/.local/share/...`) — replaced with a real
+      `argparse`-based CLI, plus a `[project.scripts]` entry point
+      (`ob-dump-reader`).
+    - Dead, commented-out "write transaction to initialize the root
+      handle" code removed — the same `dart_lmdb2`-era misconception item
+      22 already resolved for Dart, independently present here too:
+      `readonly=True` alone is sufficient, LMDB's MVCC design is exactly
+      why.
+    - Added `tests/` (15 tests, `pytest`) — the package had none at all
+      despite `pytest` already being a declared dev dependency and
+      `testpaths = ["tests"]` already configured; every fix above is now
+      covered by a fixture-based test that would have caught it.
+    - Removed unused `protovalidate`/`pydantic` dev dependencies (zero
+      references anywhere in `src/`) — pulled in 16 transitive packages
+      for nothing; `uv lock` after removal dropped from 650 to under 100
+      lines.
+    - `.github/workflows/pytest.yml` filled in (previously an empty stub)
+      and `scripts/ci/test-python.sh` added, matching the
+      `test-dart.sh`/`test-flutter.sh` pattern from item 21. Separately,
+      `release.yml`'s own `test-python` job was found using
+      `subosito/flutter-action@v2` (copy-pasted from `test-flutter` without
+      swapping the toolchain-setup step) instead of `astral-sh/setup-uv`;
+      fixed, and wired into the same gate every other build/test leg feeds:
+      a new `tests-passed` job (`needs: [build-cpp, test-dart, test-flutter,
+      test-python]`) that `bump-versions` alone depends on, rather than
+      every downstream job repeating the full leg list — added on request,
+      once adding `test-python` directly to `bump-versions`' own `needs:`
+      made that repetition obvious. `publish-pypi`'s checkout was missing
+      `fetch-depth: 0` — `setuptools_scm` derives the package version from
+      the git tag via `git describe`, which a shallow checkout can leave
+      unreachable, silently falling back to `pyproject.toml`'s
+      `fallback_version` (`0.0.0.dev0`) instead of the real release
+      version.
+    - `.github/dependabot.yml`'s newly-added `py/` entry used
+      `package-ecosystem: "pip"`, which doesn't understand `uv.lock` (only
+      `requirements.txt`/`Pipfile`/plain `pyproject.toml`) — confirmed via
+      GitHub's own Dependabot changelog that `"uv"` got native ecosystem
+      support (understanding `pyproject.toml` + `uv.lock` directly) in
+      March 2025; switched to that.
+24. **One root `CHANGELOG.md`, generated per-package copies — done.**
+    `create-release`'s "Extract release notes" step only ever read
+    `dart/CHANGELOG.md` — fine while `dart/` was the only package with real
+    content, but a real gap once `flutter/CHANGELOG.md` grew its own
+    distinct entries and `py/CHANGELOG.md` was added (item 23): neither
+    ever fed into the combined GitHub Release notes, and the C++ core had
+    no changelog anywhere at all. Considered adding a root file *alongside*
+    the three per-package ones first, but pub.dev requires dart/ and
+    flutter/ to each ship their own physical `CHANGELOG.md` to publish at
+    all — a hand-maintained root file plus three hand-maintained package
+    files is exactly the "which copy is the real one" drift this is meant
+    to fix, not a fix.
+
+    Landed on: the repo root's `CHANGELOG.md` is the *only* hand-edited
+    copy — version headings, each containing per-package `### dart/`/
+    `### flutter/`/`### py/` subsections (only the packages that actually
+    changed that release). `dart/CHANGELOG.md`/`flutter/CHANGELOG.md`/
+    `py/CHANGELOG.md` are **not committed at all** (removed from git,
+    added to each package's own `.gitignore`) — `scripts/ci/sync_changelogs.py`
+    generates them fresh, ephemerally, as a `release.yml` step immediately
+    before each package's own publish step (`publish-dart`/`publish-flutter`/
+    not `publish-pypi`, since PyPI has no equivalent hard requirement) —
+    same "never written back to the repo" pattern `publish-flutter` already
+    uses for its own ephemeral `pubspec.yaml` ref-swap. `create-release`'s
+    extraction step now reads the root file directly instead of looping
+    over three.
+
+    **Two more real, previously-undiscovered bugs surfaced while doing
+    this** (both confirmed, not assumed):
+    - Every "`0.1.0-alpha.1`" reference across `dart/CHANGELOG.md`,
+      `flutter/CHANGELOG.md`, and this doc's own item 18 was wrong — the
+      version actually published by hand to pub.dev (to reserve the
+      package names, see item 18) is `0.1.0-alpha.0`, confirmed via
+      pub.dev's own API (`curl .../api/packages/ob_dump_reader` →
+      `"latest": {"version": "0.1.0-alpha.0"}`, same for
+      `ob_dump_reader_flutter`) — there is no `0.1.0-alpha.1` and never
+      was. Fixed everywhere, including this document. Since that publish
+      was manual (never through a git tag), it also has no GitHub tag to
+      link to — `sync_changelogs.py` special-cases it to link to its
+      pub.dev version page instead of a 404ing `releases/tag/` URL.
+    - `publish-pypi` had **no `working-directory: py` at all** (unlike
+      `publish-dart`/`publish-flutter`, which both set one) — every
+      `uv sync`/`uv build`/`uv publish` step would have run from the repo
+      root, which has no `pyproject.toml`, and failed immediately. Never
+      caught because this job has never actually run (no tag has been
+      pushed since it was added). Confirmed by running `uv sync --dev`
+      from the repo root locally: `error: No pyproject.toml found in
+      current directory or any parent directory` — uv only searches
+      upward, never into subdirectories. Fixed by adding the same
+      `defaults: run: working-directory: py` the other two publish jobs
+      already had.
 
 ## Integrity & Licensing
 

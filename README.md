@@ -4,6 +4,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/o-murphy/ob-dump)
 ![Dart Pub Version](https://img.shields.io/pub/v/ob_dump_reader?logo=dart)
 ![Flutter Pub Version](https://img.shields.io/pub/v/ob_dump_reader_flutter?logo=flutter)
+![PyPI Version](https://img.shields.io/pypi/v/ob_dump_reader?logo=pypi)
 
 
 Reads an [ObjectBox](https://objectbox.io/) LMDB store (`data.mdb`) directly
@@ -115,20 +116,38 @@ its own README and `docs/BACKLOG.md` (phased-plan item 10) for why.
 
 **Using it from a Flutter app** (not a plain Dart script/CLI)? Depend on
 [`flutter/`](flutter) (`ob_dump_reader_flutter`) instead — same API,
-re-exported unchanged, but pulls in `flutter_lmdb2` so Flutter's own plugin
-tooling bundles the native LMDB library into your Android/iOS/macOS app
-properly (`ob_dump_reader`'s own `dart_lmdb2` dependency only fetches a
-binary into your pub cache, which isn't part of a shipped mobile app). See
-`flutter/README.md` and `docs/BACKLOG.md` (phased-plan item 17).
+re-exported unchanged, but it's a real Flutter plugin (`ffiPlugin: true`)
+that compiles and bundles the native LMDB library for you on every platform
+(Android/iOS/Linux/macOS/Windows). `ob_dump_reader`'s own
+`dart run ob_dump_reader:build` only produces a library for the current
+desktop machine, which isn't part of a shipped mobile app. See
+`flutter/README.md` and `docs/BACKLOG.md` (phased-plan items 17 and 22).
+
+## Python
+
+[`py/`](py) is a separate, standalone PyPI package
+([`ob-dump-reader`](py/README.md)) for reading an ObjectBox database
+directly from Python, via [`py-lmdb`](https://github.com/jnwatson/py-lmdb)
+— same pattern as `dart/`: no FFI binding to this C++ core, just an LMDB
+binding for the language plus this project's own key-format/`ToMany`
+handling. Also ships an `async`/`await` variant (`ob_dump_reader.aio`,
+built on py-lmdb's own executor-based async wrapper). See its own README
+for the full workflow.
 
 ## Building your own reader in another language
 
-[`dart/`](dart) (see above) is a worked example of a pattern that doesn't
-need any FFI binding to this C++ core at all, as long as *some* LMDB binding
-exists for your language (common — LMDB is a popular embedded store):
+[`dart/`](dart) and [`py/`](py) (see above) are worked examples of a
+pattern that doesn't need any FFI binding to this C++ core at all, as long
+as *some* LMDB binding exists for your language (common — LMDB is a
+popular embedded store):
 
-1. **Get an LMDB binding for your language.** E.g. `dart_lmdb2` for Dart,
-   `py-lmdb` for Python, the `lmdb` crate for Rust, `lmdbjava` for the JVM.
+1. **Get an LMDB binding for your language.** `dart/` (see above) vendors
+   and builds LMDB itself rather than depending on a third-party binding
+   package — see `docs/BACKLOG.md` item 22 for why (a real AOT-compiled-build
+   bug found in the binding package it used to depend on). `py/` uses
+   [`py-lmdb`](https://github.com/jnwatson/py-lmdb) directly — mature and
+   actively maintained, so no equivalent reason to vendor there. For other
+   languages: the `lmdb` crate for Rust, `lmdbjava` for the JVM.
 2. **Generate the schema artifacts from this project:**
    ```sh
    ob_dump --schema objectbox-model.json -o schema.json  # entityId -> name/shape
@@ -148,9 +167,10 @@ exists for your language (common — LMDB is a popular embedded store):
    entry), the value is one record's raw FlatBuffers table bytes, and:
    - `entity_id = key[3] / 4`
    - `object_id = key[4..7]` as a big-endian uint32
-   `dart/lib/ob_dump_reader.dart` is a complete, working reference
-   implementation of exactly this (~60 lines) — port it rather than
-   starting from scratch.
+   `dart/lib/ob_dump_reader.dart` and `py/src/ob_dump_reader/__init__.py`
+   are both complete, working reference implementations of exactly this
+   (each well under 100 lines) — port whichever's closer to your target
+   language rather than starting from scratch.
 5. Dispatch on `entity_id` (via `schema.json`) to pick the right
    `flatc`-generated type, decode, and do whatever you need with the result
    (insert into a new database, etc).

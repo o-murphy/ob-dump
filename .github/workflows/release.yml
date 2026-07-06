@@ -4,32 +4,13 @@ name: Release
 # the C++ core's ob_dump_version(), and both dart/ and flutter/ pubspec
 # versions (which must always match each other — see
 # .github/workflows/version-parity.yml and docs/BACKLOG.md item 18).
-#
-# Also runnable manually (workflow_dispatch) with a tag to *simulate*,
-# without needing a real tag to exist — useful to dry-run the whole
-# pipeline (build/test/package/changelog-extraction) before ever actually
-# tagging. dry_run defaults to true specifically so "Run workflow" in the
-# GitHub UI can't accidentally publish anything just by clicking the
-# default button.
 on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag to simulate, e.g. v0.1.0 (doesn't need to actually exist)"
-        required: true
-        type: string
-      dry_run:
-        description: "Dry run: build/test/package/validate everything, but skip the version-bump commit, GitHub release, and pub.dev publish"
-        required: false
-        type: boolean
-        default: true
 
 env:
-  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-  IS_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+  RELEASE_TAG: ${{ github.ref_name }}
 
 jobs:
   # ── 1 + 5 (cpp half): build the CLI/shared-lib for every platform we
@@ -47,8 +28,7 @@ jobs:
           - { os: windows-latest,   name: windows-x64 }
           - { os: windows-11-arm,   name: windows-arm64 }
           # Universal binary (both archs in one file via Xcode/clang +
-          # lipo) rather than two separate macOS legs — same pattern
-          # dart_lmdb2's own CMakeLists.txt already uses. Quoted so the
+          # lipo) rather than two separate macOS legs. Quoted so the
           # embedded ";" survives substitution into the shell command below
           # instead of bash reading it as a command separator.
           - { os: macos-latest,     name: macos-universal, cmake_extra: '-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"' }
@@ -92,9 +72,26 @@ jobs:
           channel: stable
       - run: ./scripts/ci/test-flutter.sh
 
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v8.3.0
+      - run: ./scripts/ci/test-python.sh
+
+  # Single guard job every build/test leg feeds into — downstream jobs
+  # depend on this one instead of repeating the full leg list, so adding a
+  # new language/platform leg later only means adding it here, not hunting
+  # down every job's needs: list.
+  tests-passed:
+    needs: [build-cpp, test-dart, test-flutter, test-python]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All build/test legs passed."
+
   # ── 2: bump both pubspecs to the tag's version, commit + push to main ──
   bump-versions:
-    needs: [build-cpp, test-dart, test-flutter]
+    needs: tests-passed
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -125,10 +122,7 @@ jobs:
           sed -i "s/^version: .*/version: $VERSION/" flutter/pubspec.yaml
           grep '^version:' dart/pubspec.yaml flutter/pubspec.yaml
 
-      # Skipped on a dry run — nothing gets committed/pushed to main, so a
-      # manual "Run workflow" dry run never mutates the real branch.
       - name: Commit and push version bump
-        if: env.IS_DRY_RUN != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -143,11 +137,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      # On a real run this is post-bump (bump-versions pushed to main just
-      # above). On a dry run bump-versions skipped its push, so this is
-      # just whatever main currently is — fine, this job's real purpose in
-      # a dry run is validating the changelog-extraction + packaging glue,
-      # not the actual git state.
+      # This is post-bump (bump-versions pushed to main just above).
       - uses: actions/checkout@v7
         with:
           ref: main
@@ -159,22 +149,14 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Extract release notes from dart/CHANGELOG.md
+      - name: Extract release notes from CHANGELOG.md
         run: |
           VERSION="${{ needs.bump-versions.outputs.version }}"
-          ./scripts/ci/extract-changelog.sh "$VERSION" dart/CHANGELOG.md > /tmp/release_notes.md
+          ./scripts/ci/extract-changelog.sh "$VERSION" CHANGELOG.md > /tmp/release_notes.md
 
           if [ ! -s /tmp/release_notes.md ]; then
-            if [ "$IS_DRY_RUN" = "true" ]; then
-              # A dry run's whole point is trying a tag/version that isn't
-              # "real" yet — requiring a matching CHANGELOG.md entry for it
-              # would defeat that. Only a real release enforces this.
-              echo "::warning::No changelog entry found for $VERSION (or [Unreleased]) — fine for a dry run, required for a real release."
-              echo "_(dry run: no matching CHANGELOG.md entry for $VERSION)_" > /tmp/release_notes.md
-            else
-              echo "No changelog entry found for $VERSION (or [Unreleased]) — add one to dart/CHANGELOG.md (and flutter/CHANGELOG.md) first"
-              exit 1
-            fi
+            echo "No changelog entry found for $VERSION (or [Unreleased]) in CHANGELOG.md — add one first"
+            exit 1
           fi
 
           # Same "Full Changelog" compare-link footer convention GitHub's
@@ -191,7 +173,6 @@ jobs:
           cat /tmp/release_notes.md
 
       - name: Create GitHub Release
-        if: env.IS_DRY_RUN != 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
@@ -218,9 +199,17 @@ jobs:
 
       - uses: dart-lang/setup-dart@v1
       - run: dart pub get
+
+      # pub.dev refuses to publish a package without its own CHANGELOG.md —
+      # generated fresh from the repo root's CHANGELOG.md, in this ephemeral
+      # checkout only (never committed back, same as publish-flutter's own
+      # pubspec.yaml rewrite below).
+      - name: Generate CHANGELOG.md
+        working-directory: .
+        run: python3 scripts/ci/sync_changelogs.py dart
+
       - run: dart pub publish --dry-run
       - name: Publish to pub.dev
-        if: env.IS_DRY_RUN != 'true'
         run: dart pub publish --force
 
   # ── 8: publish ob_dump_reader_flutter — gated behind manual approval to
@@ -237,9 +226,7 @@ jobs:
                                        # protection rule configured in this
                                        # repo's Settings > Environments —
                                        # not something a workflow file can
-                                       # set up by itself. Gates dry runs
-                                       # too, on purpose: it's part of the
-                                       # pipeline shape being validated.
+                                       # set up by itself.
     permissions:
       id-token: write  # pub.dev OIDC trusted publisher
     defaults:
@@ -254,13 +241,7 @@ jobs:
         with:
           channel: stable
 
-      # Skipped entirely on a dry run: this swaps in the version publish-dart
-      # just published for real — on a dry run nothing was actually
-      # published, so pub.dev has no such version to resolve and this would
-      # just fail for an uninteresting reason. A dry run's job here is
-      # confirming the job/environment-gate triggers at all, not this step.
       - name: "Make pubspec.yaml publishable (path dep + publish_to: none)"
-        if: env.IS_DRY_RUN != 'true'
         run: |
           VERSION="${{ needs.bump-versions.outputs.version }}"
           flutter pub remove ob_dump_reader
@@ -276,20 +257,61 @@ jobs:
           grep -A1 '^  ob_dump_reader' pubspec.yaml
           grep -q '^publish_to:' pubspec.yaml && echo "ERROR: publish_to still present" && exit 1 || true
 
-      - name: (dry run) skip dependency swap / publish
-        if: env.IS_DRY_RUN == 'true'
-        run: |
-          echo "Dry run: nothing was actually published by publish-dart, so there is no real pub.dev version to swap in and validate here."
-
       - name: flutter pub get
-        if: env.IS_DRY_RUN != 'true'
         run: flutter pub get
       - name: flutter analyze
-        if: env.IS_DRY_RUN != 'true'
         run: flutter analyze
+
+      # See publish-dart's identical step above for why this has to be
+      # generated (not committed) — same reasoning.
+      - name: Generate CHANGELOG.md
+        working-directory: .
+        run: python3 scripts/ci/sync_changelogs.py flutter
+
       - name: flutter pub publish --dry-run
-        if: env.IS_DRY_RUN != 'true'
         run: flutter pub publish --dry-run
       - name: Publish to pub.dev
-        if: env.IS_DRY_RUN != 'true'
         run: flutter pub publish --force
+
+  # ── 9: publish ob-dump-reader to PyPI ───────────────────────────────────
+  publish-pypi:
+    needs: [bump-versions, create-release]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # PyPI trusted publishing — configure this package
+                       # for trusted publishing on PyPI first.
+
+    environment:
+      name: pypi  # requires a "required reviewers" protection rule
+                  # configured in this repo's Settings > Environments —
+                  # not something a workflow file can set up by itself.
+
+    defaults:
+      run:
+        working-directory: py  # missing entirely before — every uv command
+                                # below failed immediately with "No
+                                # pyproject.toml found" since this job never
+                                # actually ran (caught by trying `uv sync`
+                                # from the repo root locally, not assumed).
+
+    steps:
+      # fetch-depth: 0 — setuptools_scm derives the package version from
+      # the git tag via `git describe`; a shallow (default depth-1)
+      # checkout can leave that tag unreachable, silently falling back to
+      # pyproject.toml's own `fallback_version` (0.0.0.dev0) instead of
+      # the real release version.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.0
+
+      - name: Install the project
+        run: uv sync --dev
+
+      - name: Build
+        run: uv build
+
+      - name: Publish
+        run: uv publish --trusted-publishing always

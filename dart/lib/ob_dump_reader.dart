@@ -33,10 +33,9 @@
 ///     [tryParseJsonString] on the matching field's value.
 library ob_dump_reader;
 
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:dart_lmdb2/lmdb.dart';
+import 'src/lmdb_root_walk.dart';
 
 export 'src/decode_helpers.dart';
 export 'src/relations.dart';
@@ -67,101 +66,30 @@ const int _keyTypeData = 0x18;
 /// [objectboxDir] (a directory containing `data.mdb`, optionally
 /// `lock.mdb`), invoking [onRecord] once per record.
 ///
-/// Works on a temporary copy of the database, never the original files
-/// directly: `dart_lmdb2` needs one write-capable transaction (just to
-/// register the root db handle, nothing is actually mutated) to open an
-/// ObjectBox store, and doing that against a live database risks colliding
-/// with a running ObjectBox process or a read-only source location. This
-/// copy costs disk I/O and temporary space proportional to the database
-/// size — for a large database where that's unwelcome, and you're sure the
-/// source is safe to open directly (nothing else has it open, and it's on
-/// writable storage), see [readObjectBoxRecordsUnsafe].
+/// Reads the original files directly, in place — no temporary copy. Opens
+/// the LMDB *environment* itself read-only (`MDB_RDONLY`, not just the
+/// transaction), which is exactly what LMDB's own MVCC design exists for:
+/// any number of readers, including in other processes, can safely run
+/// alongside one concurrent writer, with zero risk to the original data.
+/// (An earlier version of this function copied to a temp directory first —
+/// that was only ever needed because of a now-removed dependency that
+/// required a write-capable environment just to register the root
+/// database handle; nothing was ever actually written.)
+///
+/// This does synchronous, CPU-bound native work — for a large database on
+/// a UI isolate, consider running it via `compute()`/`Isolate.run()`.
 Future<void> readObjectBoxRecords(
   String objectboxDir,
   void Function(ObRecord record) onRecord,
-) {
-  return _readObjectBoxRecords(objectboxDir, onRecord, copyToTemp: true);
-}
-
-/// Same as [readObjectBoxRecords], but skips the safety copy and opens
-/// [objectboxDir] directly.
-///
-/// **Unsafe**: this still opens a write-capable LMDB transaction against
-/// `objectboxDir` (see [readObjectBoxRecords] for why — nothing is actually
-/// written, but the env must be opened write-capable regardless). Against
-/// the *original* files instead of a disposable copy, that means:
-/// - if anything else (e.g. a running ObjectBox-using app) has the database
-///   open at the same time, you risk lock contention or reading a torn page
-///   from a concurrent write;
-/// - the location must be on writable storage, or opening will fail outright.
-///
-/// Only reach for this once you know the source isn't in use by anything
-/// else (e.g. the owning app is fully closed) — the payoff is skipping a
-/// full copy of `data.mdb`/`lock.mdb`, which matters mainly for large
-/// databases.
-Future<void> readObjectBoxRecordsUnsafe(
-  String objectboxDir,
-  void Function(ObRecord record) onRecord,
-) {
-  return _readObjectBoxRecords(objectboxDir, onRecord, copyToTemp: false);
-}
-
-Future<void> _readObjectBoxRecords(
-  String objectboxDir,
-  void Function(ObRecord record) onRecord, {
-  required bool copyToTemp,
-}) async {
-  final tmp = copyToTemp
-      ? Directory.systemTemp.createTempSync('ob_dump_reader_')
-      : null;
-  final dbDir = tmp?.path ?? objectboxDir;
-
-  try {
-    if (tmp != null) {
-      for (final name in ['data.mdb', 'lock.mdb']) {
-        final src = File('$objectboxDir/$name');
-        if (src.existsSync()) src.copySync('${tmp.path}/$name');
-      }
+) async {
+  forEachRootEntry(objectboxDir, (key, value) {
+    if (key.length == 8 && key[0] == _keyTypeData) {
+      final entityId = key[3] ~/ 4;
+      final objectId = _readUint32BE(key, 4);
+      onRecord(ObRecord(entityId: entityId, objectId: objectId, data: value));
     }
-
-    final db = LMDB();
-    await db.init(
-      dbDir,
-      config: LMDBInitConfig(maxDbs: 4, mapSize: 512 * 1024 * 1024),
-    );
-
-    // Single write txn to open the root unnamed DB (dart_lmdb2 internals
-    // require this — nothing is written, just the dbi handle registration).
-    final regTxn = await db.txnStart();
-    await db.cursorOpen(regTxn);
-    await db.txnCommit(regTxn);
-
-    final txn = await db.txnStart(flags: LMDBFlagSet()..add(MDB_RDONLY));
-    final cursor = await db.cursorOpen(txn);
-
-    CursorEntry? row = await db.cursorGet(cursor, null, CursorOp.first);
-    while (row != null) {
-      final key = row.key;
-      if (key.length == 8 && key[0] == _keyTypeData) {
-        final entityId = key[3] ~/ 4;
-        final objectId = _readUint32BE(key, 4);
-        // Copied out of the cursor's buffer — row.data isn't guaranteed
-        // valid once the transaction below is aborted.
-        onRecord(ObRecord(
-          entityId: entityId,
-          objectId: objectId,
-          data: Uint8List.fromList(row.data),
-        ));
-      }
-      row = await db.cursorGet(cursor, null, CursorOp.next);
-    }
-
-    db.cursorClose(cursor);
-    await db.txnAbort(txn);
-    db.close();
-  } finally {
-    tmp?.deleteSync(recursive: true);
-  }
+    return true;
+  });
 }
 
 int _readUint32BE(List<int> bytes, int offset) {
