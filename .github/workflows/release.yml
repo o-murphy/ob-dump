@@ -149,13 +149,13 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Extract release notes from dart/CHANGELOG.md
+      - name: Extract release notes from CHANGELOG.md
         run: |
           VERSION="${{ needs.bump-versions.outputs.version }}"
-          ./scripts/ci/extract-changelog.sh "$VERSION" dart/CHANGELOG.md > /tmp/release_notes.md
+          ./scripts/ci/extract-changelog.sh "$VERSION" CHANGELOG.md > /tmp/release_notes.md
 
           if [ ! -s /tmp/release_notes.md ]; then
-            echo "No changelog entry found for $VERSION (or [Unreleased]) — add one to dart/CHANGELOG.md (and flutter/CHANGELOG.md) first"
+            echo "No changelog entry found for $VERSION (or [Unreleased]) in CHANGELOG.md — add one first"
             exit 1
           fi
 
@@ -199,6 +199,15 @@ jobs:
 
       - uses: dart-lang/setup-dart@v1
       - run: dart pub get
+
+      # pub.dev refuses to publish a package without its own CHANGELOG.md —
+      # generated fresh from the repo root's CHANGELOG.md, in this ephemeral
+      # checkout only (never committed back, same as publish-flutter's own
+      # pubspec.yaml rewrite below).
+      - name: Generate CHANGELOG.md
+        working-directory: .
+        run: python3 scripts/ci/sync_changelogs.py dart
+
       - run: dart pub publish --dry-run
       - name: Publish to pub.dev
         run: dart pub publish --force
@@ -252,6 +261,13 @@ jobs:
         run: flutter pub get
       - name: flutter analyze
         run: flutter analyze
+
+      # See publish-dart's identical step above for why this has to be
+      # generated (not committed) — same reasoning.
+      - name: Generate CHANGELOG.md
+        working-directory: .
+        run: python3 scripts/ci/sync_changelogs.py flutter
+
       - name: flutter pub publish --dry-run
         run: flutter pub publish --dry-run
       - name: Publish to pub.dev
@@ -269,6 +285,14 @@ jobs:
       name: pypi  # requires a "required reviewers" protection rule
                   # configured in this repo's Settings > Environments —
                   # not something a workflow file can set up by itself.
+
+    defaults:
+      run:
+        working-directory: py  # missing entirely before — every uv command
+                                # below failed immediately with "No
+                                # pyproject.toml found" since this job never
+                                # actually ran (caught by trying `uv sync`
+                                # from the repo root locally, not assumed).
 
     steps:
       # fetch-depth: 0 — setuptools_scm derives the package version from

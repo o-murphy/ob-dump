@@ -1095,6 +1095,57 @@ decoder's output exactly.
       GitHub's own Dependabot changelog that `"uv"` got native ecosystem
       support (understanding `pyproject.toml` + `uv.lock` directly) in
       March 2025; switched to that.
+24. **One root `CHANGELOG.md`, generated per-package copies — done.**
+    `create-release`'s "Extract release notes" step only ever read
+    `dart/CHANGELOG.md` — fine while `dart/` was the only package with real
+    content, but a real gap once `flutter/CHANGELOG.md` grew its own
+    distinct entries and `py/CHANGELOG.md` was added (item 23): neither
+    ever fed into the combined GitHub Release notes, and the C++ core had
+    no changelog anywhere at all. Considered adding a root file *alongside*
+    the three per-package ones first, but pub.dev requires dart/ and
+    flutter/ to each ship their own physical `CHANGELOG.md` to publish at
+    all — a hand-maintained root file plus three hand-maintained package
+    files is exactly the "which copy is the real one" drift this is meant
+    to fix, not a fix.
+
+    Landed on: the repo root's `CHANGELOG.md` is the *only* hand-edited
+    copy — version headings, each containing per-package `### dart/`/
+    `### flutter/`/`### py/` subsections (only the packages that actually
+    changed that release). `dart/CHANGELOG.md`/`flutter/CHANGELOG.md`/
+    `py/CHANGELOG.md` are **not committed at all** (removed from git,
+    added to each package's own `.gitignore`) — `scripts/ci/sync_changelogs.py`
+    generates them fresh, ephemerally, as a `release.yml` step immediately
+    before each package's own publish step (`publish-dart`/`publish-flutter`/
+    not `publish-pypi`, since PyPI has no equivalent hard requirement) —
+    same "never written back to the repo" pattern `publish-flutter` already
+    uses for its own ephemeral `pubspec.yaml` ref-swap. `create-release`'s
+    extraction step now reads the root file directly instead of looping
+    over three.
+
+    **Two more real, previously-undiscovered bugs surfaced while doing
+    this** (both confirmed, not assumed):
+    - Every "`0.1.0-alpha.1`" reference across `dart/CHANGELOG.md`,
+      `flutter/CHANGELOG.md`, and this doc's own item 18 was wrong — the
+      version actually published by hand to pub.dev (to reserve the
+      package names, see item 18) is `0.1.0-alpha.0`, confirmed via
+      pub.dev's own API (`curl .../api/packages/ob_dump_reader` →
+      `"latest": {"version": "0.1.0-alpha.0"}`, same for
+      `ob_dump_reader_flutter`) — there is no `0.1.0-alpha.1` and never
+      was. Fixed everywhere, including this document. Since that publish
+      was manual (never through a git tag), it also has no GitHub tag to
+      link to — `sync_changelogs.py` special-cases it to link to its
+      pub.dev version page instead of a 404ing `releases/tag/` URL.
+    - `publish-pypi` had **no `working-directory: py` at all** (unlike
+      `publish-dart`/`publish-flutter`, which both set one) — every
+      `uv sync`/`uv build`/`uv publish` step would have run from the repo
+      root, which has no `pyproject.toml`, and failed immediately. Never
+      caught because this job has never actually run (no tag has been
+      pushed since it was added). Confirmed by running `uv sync --dev`
+      from the repo root locally: `error: No pyproject.toml found in
+      current directory or any parent directory` — uv only searches
+      upward, never into subdirectories. Fixed by adding the same
+      `defaults: run: working-directory: py` the other two publish jobs
+      already had.
 
 ## Integrity & Licensing
 

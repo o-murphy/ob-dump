@@ -9,8 +9,12 @@
 # genuinely fiddly to get right (dot-escaping in the version regex, not
 # letting the CHANGELOG's own trailing link-reference lines leak into the
 # extracted body) — much easier to iterate on and verify locally, e.g.:
-#   ./scripts/ci/extract-changelog.sh 0.1.0-alpha.0 dart/CHANGELOG.md
-# than only inside a workflow run.
+#   ./scripts/ci/extract-changelog.sh Unreleased CHANGELOG.md
+# than only inside a workflow run. Used against the repo root's
+# CHANGELOG.md (the single source of truth — see that file's own header);
+# dart/CHANGELOG.md etc. are generated ephemerally at publish time by
+# scripts/ci/sync_changelogs.py, not committed, so not a realistic target
+# for this script day-to-day.
 set -euo pipefail
 
 VERSION="${1:?usage: extract-changelog.sh <version> <changelog-file>}"

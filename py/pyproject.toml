@@ -32,7 +32,7 @@ ob-dump-reader = "ob_dump_reader.__main__:main"
 "Homepage" = "https://github.com/o-murphy/ob-dump"
 "Bug Reports" = "https://github.com/o-murphy/ob-dump/issues"
 "Source" = "https://github.com/o-murphy/ob-dump"
-"Changelog" = "https://github.com/o-murphy/ob-dump/blob/main/py/CHANGELOG.md"
+"Changelog" = "https://github.com/o-murphy/ob-dump/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]
