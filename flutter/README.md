@@ -1,5 +1,9 @@
 # ob_dump_reader_flutter
 
+![GitHub License](https://img.shields.io/github/license/o-murphy/ob-dump)
+![Pub Version](https://img.shields.io/pub/v/ob_dump_reader_flutter?logo=dart)
+
+
 Same API as [`ob_dump_reader`](../dart) — `readObjectBoxRecords`,
 `readObjectBoxRecordsUnsafe`, `ObRecord` — re-exported unchanged. Use
 **this** package (not `ob_dump_reader` directly) from inside a Flutter app;

@@ -1,5 +1,9 @@
 # ob-dump
 
+![GitHub License](https://img.shields.io/github/license/o-murphy/ob-dump)
+![GitHub Release](https://img.shields.io/github/v/release/o-murphy/ob-dump)
+
+
 Reads an [ObjectBox](https://objectbox.io/) LMDB store (`data.mdb`) directly
 and dumps its contents to JSON — **without linking `objectbox-c`**. Decoding
 is driven entirely, at runtime, by the project's own `objectbox-model.json`

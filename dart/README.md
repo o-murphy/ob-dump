@@ -1,5 +1,9 @@
 # ob_dump_reader
 
+![GitHub License](https://img.shields.io/github/license/o-murphy/ob-dump)
+![Pub Version](https://img.shields.io/pub/v/ob_dump_reader?logo=dart)
+
+
 Minimal ObjectBox LMDB reader toolkit for Dart. This package does exactly
 one thing: walk a `data.mdb` file and hand you each stored object's raw
 FlatBuffers table bytes, plus its entity id and object id. It has **no
