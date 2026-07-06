@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Re-exports [`ob_dump_reader`](../dart)'s new `readToManyTargets()`/
+  `readToManyTargetsUnsafe()` and `decodeFlex()`/`bytesToHex()`/
+  `bytesToUuidString()`/`tryParseJsonString()` decode helpers — no code
+  changes needed here, this package re-exports the whole API unchanged.
+
 ## [0.1.0-alpha.0] - 2026-07-06
 
 ### Added

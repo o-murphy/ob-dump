@@ -1,6 +1,8 @@
 /// Re-exports `ob_dump_reader`'s entire API unchanged — see that package's
-/// docs for [readObjectBoxRecords], [readObjectBoxRecordsUnsafe], and
-/// [ObRecord].
+/// docs for [readObjectBoxRecords], [readObjectBoxRecordsUnsafe],
+/// [ObRecord], [readToManyTargets] (`ToMany` relations), and the
+/// `Flex`/`ExternalPropertyType` decode helpers ([decodeFlex],
+/// [bytesToHex], [bytesToUuidString], [tryParseJsonString]).
 ///
 /// The only reason this package exists (instead of just depending on
 /// `ob_dump_reader` directly from a Flutter app) is to pull `flutter_lmdb2`

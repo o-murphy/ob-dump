@@ -11,9 +11,8 @@ namespace ob_dump_internal {
 // path forms) and returns a JSON dump shaped as
 // `{ "<EntityName>": [ {...fields..., "id": <object_id>}, ... ], ... }`,
 // using `modelJson` (the full contents of objectbox-model.json) as the
-// schema. Entities with zero objects are omitted entirely, matching
-// tools/ob_migration_poc/bin/export_json.dart in the ebalistyka repo this
-// was ported from.
+// schema. Entities with zero objects are omitted entirely, matching the
+// reference Dart migration PoC this project ports from.
 //
 // Builds the entire result in memory before returning it — see
 // dumpStreaming for a variant that doesn't, for large databases.

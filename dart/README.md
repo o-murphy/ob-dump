@@ -4,11 +4,15 @@
 ![Pub Version](https://img.shields.io/pub/v/ob_dump_reader?logo=dart)
 
 
-Minimal ObjectBox LMDB reader toolkit for Dart. This package does exactly
-one thing: walk a `data.mdb` file and hand you each stored object's raw
-FlatBuffers table bytes, plus its entity id and object id. It has **no
-FlatBuffers or schema knowledge at all** — its only dependency is
-[`dart_lmdb2`](https://pub.dev/packages/dart_lmdb2).
+Minimal ObjectBox LMDB reader toolkit for Dart. Its core job: walk a
+`data.mdb` file and hand you each stored object's raw FlatBuffers table
+bytes, plus its entity id and object id — no per-field FlatBuffers or
+schema knowledge for that part, just [`dart_lmdb2`](https://pub.dev/packages/dart_lmdb2).
+It also covers the handful of things `flatc --dart` output can't: `ToMany`
+relations (a separate LMDB structure, not a table field) and `Flex`/
+`ExternalPropertyType` fields (`flatc` only knows the base FlatBuffers
+type, not ObjectBox's semantic annotation on top) — see "Beyond `flatc`"
+below.
 
 Decoding those raw bytes into typed objects is left to the official
 `flatc --dart` compiler — not this package, and not [`ob-dump`](..)'s own
@@ -75,6 +79,39 @@ If you know the source isn't in use by anything else and skipping that cost
 matters (a large database), use `readObjectBoxRecordsUnsafe` instead — same
 signature, no copy, reads `objectboxDir` directly. See its doc comment for
 the exact risk before reaching for it.
+
+## Beyond `flatc`: ToMany relations and Flex/ExternalPropertyType fields
+
+`ob_dump --schema` lists each property's `externalType` and each entity's
+`relations` (id, name, target entity) when present — use that to know
+which of your fields need one of these:
+
+```dart
+import 'package:ob_dump_reader/ob_dump_reader.dart';
+
+// ToMany: not part of the FlatBuffers table at all, so flatc has no
+// accessor for it — relationId/sourceObjectId come from `ob_dump --schema`
+// and the record you're looking at (record.objectId).
+final authorIds = await readToManyTargets(dbDir, relationId, record.objectId);
+
+// Flex: flatc gives you the raw bytes (a List<int>/Uint8List field) —
+// decode with decodeFlex.
+final value = decodeFlex(ammo.someFlexField);
+
+// ExternalPropertyType: flatc gives you the base type's plain value
+// (a byte list for Uuid/Int128/Decimal128/Bson, a string for
+// Json/JavaScript/JsonToNative) — decode with the matching helper.
+final uuid = bytesToUuidString(ammo.someUuidField);
+final blob = bytesToHex(ammo.someBsonField);
+final parsed = tryParseJsonString(ammo.someJsonField);
+```
+
+Every one of these mirrors `ob-dump`'s own C++ decode (`src/fb_decode.cpp`)
+exactly — same hex/UUID formatting, same JSON-parse-with-string-fallback
+for `JavaScript`, same forward-only relation direction (see
+`docs/BACKLOG.md` "ToMany relations" for why: the backward direction is an
+auto-maintained index for ObjectBox's own query engine, not needed for a
+one-directional dump).
 
 ## Why this shape
 

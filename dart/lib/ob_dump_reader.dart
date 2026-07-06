@@ -22,12 +22,24 @@
 ///
 /// See ob-dump's `docs/BACKLOG.md` ("Schema export") for the exact split of
 /// responsibilities and its limits.
+///
+/// Two things `flatc --dart` output can't handle on its own, also covered
+/// by this package:
+///   - `ToMany` relations aren't part of the FlatBuffers table at all — use
+///     [readToManyTargets].
+///   - `Flex` fields and ObjectBox's `ExternalPropertyType` annotation
+///     (`Uuid`, `Json`, etc.) decode to raw bytes/strings via `flatc` alone —
+///     use [decodeFlex]/[bytesToHex]/[bytesToUuidString]/
+///     [tryParseJsonString] on the matching field's value.
 library ob_dump_reader;
 
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dart_lmdb2/lmdb.dart';
+
+export 'src/decode_helpers.dart';
+export 'src/relations.dart';
 
 /// One ObjectBox object-data record: its entity id, its own object id
 /// (ObjectBox's primary key), and the raw FlatBuffers table bytes — decode

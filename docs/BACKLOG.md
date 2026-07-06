@@ -5,10 +5,10 @@
 own `objectbox-model.json` schema file. No `.fbs` / `flatc` codegen is involved:
 decoding is schema-driven at runtime using the generic FlatBuffers `Table` API.
 
-Born out of the ebalistyka ObjectBox → SQL/keystore migration (GPL-3.0 project
-blocked from bundling the closed-source `objectbox-c` binary on Flathub). See
-that project's PoC at `tools/ob_migration_poc/` for the reference Dart
-implementation this design ports from.
+Born out of a real-world app's ObjectBox → SQL/keystore migration (a GPL-3.0
+project blocked from bundling the closed-source `objectbox-c` binary on
+Flathub). Ported from that project's own Dart migration PoC, which first
+worked out the LMDB key format and vtable-slot decoding this design builds on.
 
 This repo also contains [`dart/`](../dart), a small standalone pub.dev
 package (`ob_dump_reader`) for reading an ObjectBox database directly from
@@ -37,7 +37,7 @@ convention is undocumented but reverse-engineerable and stable:
   LMDB storage-engine convention with no public source.
 
 Because property ids are **permanent and can have gaps** (deleted properties
-leave retired ids — confirmed via ebalistyka's real model: e.g. entity `Ammo`
+leave retired ids — confirmed via a real-world app's model: e.g. entity `Ammo`
 has ids `[1,2,6,7,8,9,10,18,20,22,29,...]`, with `retiredPropertyUids` present
 in the model file), a reader must treat "slot beyond this record's vtable
 size" as "field absent", not an error — this is normal forward/backward
@@ -49,7 +49,7 @@ compatibility, not corruption.
 |---|---|---|
 | Language | Pure C public ABI; implementation may use C++ where a dependency requires it (FlatBuffers' generic `Table`/`Verifier` API and nlohmann/json are C++ header-only libraries) | Public surface must be trivially bindable via CFFI from any language (Dart `dart:ffi`, Python `ctypes`/`cffi`, Go `cgo`, JVM JNI, Swift...). C++-ness is fully internal, hidden behind `extern "C"`. |
 | Build | CMake + `FetchContent` | No network needed at *use* time, only at first configure; each dependency vendors/builds from source (Flathub/GPL-safe — no prebuilt binaries). |
-| LMDB | Vendor `mdb.c`/`midl.c` from `LMDB/lmdb` upstream, compiled ourselves (no CMake shipped upstream) | Same trusted, source-buildable pattern as `dart_lmdb2`/`dart_bclibc` already used in ebalistyka. |
+| LMDB | Vendor `mdb.c`/`midl.c` from `LMDB/lmdb` upstream, compiled ourselves (no CMake shipped upstream) | Same trusted, source-buildable pattern as `dart_lmdb2`/`dart_bclibc` already used in the app this project was born out of. |
 | FlatBuffers decode | Official `flatbuffers::Table` + `flatbuffers::Verifier` (header-only C++), driven by slot numbers computed at runtime from `objectbox-model.json` — **no `.fbs` schema, no `flatc` codegen** | Gives us battle-tested bounds-checked reads for free instead of hand-rolling and re-testing our own overflow checks in C. Still zero external schema files — same "dynamic" approach as the Dart PoC, just backed by the official reader instead of hand-rolled offset math. |
 | JSON | `nlohmann/json` (header-only) | Well-tested, ergonomic C++ JSON construction; avoids hand-rolled string escaping bugs. |
 | Copy strategy | Zero-copy | LMDB's `mdb_get`/cursor API returns pointers directly into the mmap'd file within a read txn — never copied. FlatBuffers' `Table` API reads fields directly off that same pointer. The **only** allocation in the whole pipeline is the final output JSON string. |
@@ -146,10 +146,11 @@ unsigned `.fbs` keyword (`ubyte`/`ushort`/`uint`/`ulong`) too, so a
 `flatc`-generated reader in any language agrees on signedness, not just
 width. Covered by `tests/fb_decode_test.cpp`
 (`testUnsignedIntegersDecodeCorrectly`) and `tests/fbs_gen_test.cpp`. Note:
-no real schema encountered so far (including ebalistyka's) actually sets
-this flag — checked by scanning ebalistyka's real `objectbox-model.json`
-for any `flags` value with the `8192` bit set (none found) — so this is a
-correctness fix for generality, not something that changed any real output.
+no real schema encountered so far (including the real-world app database
+this project was verified against) actually sets this flag — checked by
+scanning its real `objectbox-model.json` for any `flags` value with the
+`8192` bit set (none found) — so this is a correctness fix for
+generality, not something that changed any real output.
 
 ## Schema export: `--schema` and `--fbs`
 
@@ -206,7 +207,7 @@ not a drop-in replacement for depending on `ob-dump` directly.
 **Verified end-to-end against real data**, not just unit tests: built a
 standalone `flatc` (disabled in this project's own build — see "FlatBuffers
 decode" in Design decisions — but buildable on demand from the same fetched
-source), ran it on the `.fbs` generated from ebalistyka's real
+source), ran it on the `.fbs` generated from a real-world app's real
 `objectbox-model.json` (`flatc --cpp`, zero errors — only cosmetic
 snake_case naming-convention warnings, since our field names come straight
 from Dart property names). Extracted a real `Ammo` record's raw table bytes
@@ -286,11 +287,40 @@ decoder's output exactly.
   with none), `tests/schema_json_test.cpp` (`--schema` output), and
   `tests/dumper_stream_test.cpp` (a real hand-built LMDB fixture with both
   forward and backward relation-link keys, confirming the decoded output
-  only picks up the forward ones). Re-verified against real ebalistyka
-  data: its schema declares zero `ToMany` relations (checked all entities'
-  `"relations"` arrays — all empty), so this is a true no-op there, and
-  the existing `--json` output is unchanged (still the same 18 records
-  across 10 entities as every prior run).
+  only picks up the forward ones). Re-verified against the real-world app
+  database: its schema declares zero `ToMany` relations (checked all
+  entities' `"relations"` arrays — all empty), so this is a true no-op
+  there, and the existing `--json` output is unchanged (still the same
+  18 records across 10 entities as every prior run).
+
+  **Dart side too** — `dart/ob_dump_reader` gained `readToManyTargets()`/
+  `readToManyTargetsUnsafe()`, the same `MDB_SET_RANGE`-based lookup as the
+  C++ side (`dart_lmdb2`'s `CursorOp.setRange`, confirmed available before
+  committing to this — see `lib/src/relations.dart`), since `flatc --dart`
+  output has no accessor for a relation at all. Prompted by checking
+  whether the Dart package had parity with every C++-side decode
+  capability — it didn't, for `ToMany` and also for `Flex`/
+  `ExternalPropertyType` (see below), not just relations. Covered by
+  `test/relations_test.dart` (same forward/backward-link fixture shape as
+  the C++ test).
+
+  **Also added while checking that parity — `Flex`/`ExternalPropertyType`
+  decode helpers for Dart**: `flatc --dart` output only knows the base
+  FlatBuffers field type, so a `Flex` field comes through as raw
+  `List<int>`/`Uint8List`, and an `ExternalPropertyType` field as its
+  plain base value (bytes for `Uuid`/`Int128`/`Decimal128`/`Bson`, a
+  string for `Json`/`JavaScript`/`JsonToNative`) — exactly the gap this
+  package's C++ counterpart closes with real decoding. Added
+  `decodeFlex()` (wraps the *official* `flat_buffers` pub package's own
+  FlexBuffers reader, `package:flat_buffers/flex_buffers.dart` — same
+  Dart runtime `flatc --dart` output already depends on, so this added
+  zero new *kind* of dependency, just promoted an already-present
+  `dev_dependency` to a real one) plus `bytesToHex()`/
+  `bytesToUuidString()`/`tryParseJsonString()`, each mirroring the C++
+  decoder's exact logic (canonical UUID grouping, JSON-parse-with-string-
+  fallback for `JavaScript`). Covered by `test/decode_helpers_test.dart`,
+  using `flat_buffers`'s own `Builder.buildFromObject()` to build real
+  FlexBuffers fixtures rather than hand-rolling bytes.
 - ~~`Flex` properties~~ — **done, see phased-plan item 20 below.**
 - **`ExternalPropertyType` — partially implemented.** This is a semantic
   annotation *on top of* a base `PropertyType` (the `"externalType"` field
@@ -341,8 +371,8 @@ decoder's output exactly.
   Mongo-specific codes (`MongoId` and friends) are equally out of scope,
   same reasoning, lower priority (Mongo interop isn't a target use case
   here at all). Like `UNSIGNED`, no real schema encountered so far
-  (including ebalistyka's) actually sets `externalType` — checked the same
-  way, found none.
+  (including the real-world app database this project was verified
+  against) actually sets `externalType` — checked the same way, found none.
 - Big-endian host support — **already correct, not actually a gap** (this
   entry previously claimed otherwise; corrected after checking). FlatBuffers'
   own `ReadScalar<T>`/`EndianScalar` (`flatbuffers/base.h`) already
@@ -363,7 +393,7 @@ decoder's output exactly.
   `.github/workflows/dart.yml`, a 3-OS matrix each), but *only* CI-checked —
   no development or manual verification has happened on either platform,
   Linux is still where this project is actually developed
-  (Flathub-first priority, matching ebalistyka's own). One known fix made
+  (Flathub-first priority, matching the app it was born out of). One known fix made
   for portability: `lmdb_reader.cpp`'s file-type check used POSIX
   `stat()`/`S_ISREG` (not available as-is on MSVC) — switched to
   `std::filesystem::is_regular_file` (C++17, already our language
@@ -383,9 +413,9 @@ decoder's output exactly.
    property, wrapped in `flatbuffers::Verifier` bounds checks; skip
    out-of-range slots as "absent" (handles retired-property gaps correctly).
 5. **JSON emission** — assemble `{EntityName: [ {..fields.., "id": objId}, ... ]}`,
-   matching the shape `tools/ob_migration_poc/bin/export_json.dart` already
-   produces in ebalistyka, so outputs can be diffed 1:1 against the proven
-   Dart reference during verification.
+   matching the shape the reference Dart migration PoC this project ports
+   from already produces, so outputs can be diffed 1:1 against it during
+   verification.
 6. **CLI** — argument parsing, file I/O, wire to `ob_dump()`.
 7. **Verification** — run against a real `data.mdb` + `objectbox-model.json`
    pair and diff the JSON against the Dart PoC's output. Done: 10/11 entities
@@ -406,8 +436,8 @@ decoder's output exactly.
    13 scalar/vector types (see "Scope" above) and `tests/fb_decode_test.cpp`.
    Deliberately prioritized ahead of the Dart wrapper (step 9) on request:
    the goal is to close out type coverage once and not have to revisit
-   `fb_decode.cpp` per-type again later, even though ebalistyka's own real
-   schema only needs the original 7. `Flex`/`ToMany` stayed out of scope by
+   `fb_decode.cpp` per-type again later, even though the real-world app's
+   own real schema only needs the original 7. `Flex`/`ToMany` stayed out of scope by
    explicit choice — different enough in kind (a different encoding /
    a different LMDB structure, respectively) to deserve their own pass.
 9. **Schema export (`--schema`, `--fbs`)** — done. See "Schema export"
@@ -459,8 +489,8 @@ decoder's output exactly.
     <details><summary>Original plan (superseded for Dart, kept for context)</summary>
 
     Thin wrappers per target language calling the C ABI directly, starting
-    with Dart (`dart:ffi`) since that's what unblocks ebalistyka's actual
-    migration. Likely needs a pub.dev package that vendors this repo's C/C++
+    with Dart (`dart:ffi`) since that's what unblocks the app this project
+    was born out of. Likely needs a pub.dev package that vendors this repo's C/C++
     sources and builds them via a `build_native`-style script (same shape as
     `dart_lmdb2`/`dart_bclibc`), rather than depending on a prebuilt binary.
     Python (`ctypes`/`cffi`) etc. can follow the same pattern later. Each
@@ -470,8 +500,8 @@ decoder's output exactly.
 11. **Alternate output formats** (future) — MessagePack/CBOR writer, or a
     direct-to-SQLite writer (via the `sqlite3` C amalgamation) as an
     alternative to JSON, selected by an output-format parameter — useful for
-    projects (like ebalistyka) whose actual migration target is SQL, skipping
-    the JSON intermediate entirely.
+    projects (like the app this was born out of) whose actual migration
+    target is SQL, skipping the JSON intermediate entirely.
 12. **`OB_DUMP_SOURCE_BUFFER` input mode** (future) — LMDB's API only opens
     real files; a pure in-memory buffer input can't be handed to
     `mdb_env_open` directly. On Linux, back it with `memfd_create` + one
@@ -485,7 +515,7 @@ decoder's output exactly.
       invokes a callback once per decoded record instead of building the
       whole database as one in-memory JSON tree first — `ob_dump()`/
       `dumpToJson()` still do that, and remain the simple default. Verified
-      against the real ebalistyka database via the built `.so` directly
+      against the real-world app database via the built `.so` directly
       (12 records, same field values as every earlier verification).
       Covered by `tests/dumper_stream_test.cpp` (a hand-built minimal
       FlatBuffers table + raw `mdb_put` fixture — all-records-in-order and
@@ -535,16 +565,17 @@ decoder's output exactly.
     `FetchContent` tradeoffs — see "Design decisions" above); and a real
     Dart project to validate the generated dispatch code against, not just
     the raw `flatc` output already verified. Not needed unless someone
-    other than ebalistyka's one-time migration actually wants this —
-    ebalistyka's own use is a single run, where the manual workflow is
+    other than this project's own one-time migration use case actually
+    wants this — that use is a single run, where the manual workflow is
     already fine.
 15. **Cross-platform CI** — done: `.github/workflows/cpp.yml` and
     `.github/workflows/dart.yml`, each a 3-OS matrix (`ubuntu-latest`,
     `macos-latest`, `windows-latest`) running the existing test suites
     (`ctest`, `dart test`). This checks the *build*, not real ObjectBox
     data — none of the real-database verification done during development
-    (against ebalistyka's actual `data.mdb`) is repeated in CI, since that
-    file is personal user data, not something to commit as a fixture.
+    (against the real-world app's actual `data.mdb`) is repeated in CI,
+    since that file is personal user data, not something to commit as a
+    fixture.
     Fixed one real portability bug found while wiring this up (see
     "Explicitly out of scope" above: `lmdb_reader.cpp`'s POSIX
     `stat()`/`S_ISREG` → `std::filesystem::is_regular_file`).
@@ -833,8 +864,9 @@ decoder's output exactly.
     `target_compile_definitions` on `ob_dump_core` — falls back to plain
     `strtod`/`strtoull`, which is fine here since nothing in this project
     calls `setlocale()` (so "current" and "classic" C locale are the same
-    thing regardless). Re-verified against real ebalistyka data after the
-    fix: same 4 known diffs as every prior verification, zero new ones.
+    thing regardless). Re-verified against the real-world app database
+    after the fix: same 4 known diffs as every prior verification, zero
+    new ones.
 21. **`scripts/ci/` — reusable, locally-runnable CI logic — done.** The same
     build/test/package/changelog-extraction bash had drifted into two
     (`cpp.yml`/`dart.yml`/`flutter.yml` vs. `release.yml`'s equivalent
