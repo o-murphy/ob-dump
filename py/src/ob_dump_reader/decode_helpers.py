@@ -13,7 +13,9 @@ __all__ = (
 )
 
 
-KEY_TYPE_DATA: int = 0x18
+K_KEY_TYPE_DATA: int = 0x18
+K_KEY_TYPE_RELATION: int = 0x08
+K_RELATION_DIRECTION_FFORWARD: int = 0
 
 
 def uint32be(v: int) -> list[int]:

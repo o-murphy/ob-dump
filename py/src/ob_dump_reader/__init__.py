@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import lmdb
 
-from ob_dump_reader.decode_helpers import KEY_TYPE_DATA, read_uint32be
+from ob_dump_reader.decode_helpers import K_KEY_TYPE_DATA, read_uint32be
 
 __all__ = (
     "read_ob_records",
@@ -41,7 +41,7 @@ def read_objectbox_records(
             with txn.cursor() as cursor:
                 # We transfer the iteration on the pair (key, value)
                 for key, value in cursor:
-                    if key and len(key) == 8 and key[0] == KEY_TYPE_DATA:
+                    if key and len(key) == 8 and key[0] == K_KEY_TYPE_DATA:
                         entity_id = key[3] // 4
                         object_id = read_uint32be(key, 4)
 
