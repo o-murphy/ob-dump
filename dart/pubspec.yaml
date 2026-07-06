@@ -9,7 +9,7 @@ description: >
   vendored LMDB C source (no dependency on ob-dump's own C++ core, and no
   dependency on any third-party LMDB wrapper package) — run
   `dart run ob_dump_reader:build` once to compile it for your platform.
-version: 0.2.0-alpha.0
+version: 0.1.0-alpha.1
 homepage: https://github.com/o-murphy/ob-dump
 environment:
   sdk: '>=3.5.0 <4.0.0'

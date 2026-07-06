@@ -1150,6 +1150,7 @@ decoder's output exactly.
 ## Integrity & Licensing
 
 `ob-dump` was developed as an independent implementation for reading data stored in the ObjectBox format. It adheres to a "Clean Room Design" approach regarding binary software:
+- **Purpose-Limited:** Built solely to support data recovery and migration to another database, for projects whose own license is incompatible with `objectbox-c`'s (a closed-source binary — see "Why this exists" above). Not intended as, and not pursued as, a competing product to ObjectBox itself — no write support, no query engine, no ongoing-database use case, strictly a one-time read-only export path out of an existing store.
 - **No Reverse Engineering:** We have performed no decompilation, disassembly, or any other analysis of the closed-source `objectbox-c` binary.
 - **Open Specification:** Data parsing is based exclusively on public formats (LMDB and FlatBuffers) and the open-source code of the official schema generator ([`objectbox_generator`](https://github.com/objectbox/objectbox-dart/tree/main/generator), licensed under Apache 2.0).
 - **Model-Driven:** The decoding process is driven by the user-provided `objectbox-model.json` file, which is an open, user-accessible schema definition.

@@ -22,11 +22,14 @@ no package registry of its own to publish to, so entries land only here,
 never copied anywhere). Only `0.1.0-alpha.0` has actually shipped so far —
 published by hand directly to pub.dev to reserve the package names, never
 through a git tag/`release.yml` run, so it has no GitHub tag to link to
-below (see `docs/BACKLOG.md` item 18). Everything else is still
-`[Unreleased]`, regardless of what `dart/pubspec.yaml`/`flutter/pubspec.yaml`
-are currently bumped to in preparation for the next real release.
+below (see `docs/BACKLOG.md` item 18). `0.1.0-alpha.1` is the next planned
+release — `dart/pubspec.yaml`/`flutter/pubspec.yaml` are already bumped to
+match, in preparation for tagging it — but isn't real until the matching
+`v0.1.0-alpha.1` tag is actually pushed and `release.yml` runs.
 
 ## [Unreleased]
+
+## [0.1.0-alpha.1] - 2026-07-06
 
 ### dart/
 
@@ -223,4 +226,5 @@ to reserve the package names — confirmed live via pub.dev's own API
   properly bundles the native LMDB library on Android/iOS/macOS (see the
   `[Unreleased]` entry above for why that dependency was since dropped).
 
-[Unreleased]: https://github.com/o-murphy/ob-dump/commits/main
+[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.1...HEAD
+[0.1.0-alpha.1]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.1

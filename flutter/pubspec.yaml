@@ -6,7 +6,7 @@ description: >
   inside the app instead of needing a separate native-library dependency.
   Use this from a Flutter app; use ob_dump_reader directly from plain Dart
   (CLI scripts, server, tests).
-version: 0.2.0-alpha.0
+version: 0.1.0-alpha.1
 homepage: https://github.com/o-murphy/ob-dump
 # TODO(release): remove this line together with the path dep below —
 # `flutter analyze` actually *fails* (exit 1, not just a warning; verified
