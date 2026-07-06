@@ -5,12 +5,19 @@ from dataclasses import dataclass
 
 import lmdb
 
-from ob_dump_reader.decode_helpers import K_KEY_TYPE_DATA, read_uint32be
+from ob_dump_reader.decode_helpers import read_uint32be
 
 __all__ = (
     "read_ob_records",
+    "read_ob_to_many_targets",
     "read_objectbox_records",
+    "read_objectbox_to_many_targets",
 )
+
+
+KEY_TYPE_DATA: int = 0x18
+KEY_TYPE_RELATION: int = 0x08
+RELATION_DIRECTION_FFORWARD: int = 0
 
 
 @dataclass
@@ -41,7 +48,7 @@ def read_objectbox_records(
             with txn.cursor() as cursor:
                 # We transfer the iteration on the pair (key, value)
                 for key, value in cursor:
-                    if key and len(key) == 8 and key[0] == K_KEY_TYPE_DATA:
+                    if key and len(key) == 8 and key[0] == KEY_TYPE_DATA:
                         entity_id = key[3] // 4
                         object_id = read_uint32be(key, 4)
 
@@ -54,5 +61,23 @@ def read_objectbox_records(
                         )
 
 
+def read_objectbox_to_many_targets(
+    objectbox_dir: PathLike, relation_id: int, source_object_id: int
+):
+    # 1. Opening the LMDB environment
+    with lmdb.Environment(
+        str(objectbox_dir),
+        map_size=512 * 1024 * 1024,
+        max_dbs=4,
+        readonly=True,  # set to False for initial write transaction
+    ) as db:
+        # # 2. Write transaction to initialize the root handle (as required by LMDB/Objectbox)
+        # if not db.readonly:
+        #     with db.begin(write=True) as txn:
+        #         pass
+        pass
+
+
 # Aliases
 read_ob_records = read_objectbox_records
+read_ob_to_many_targets = read_objectbox_to_many_targets
