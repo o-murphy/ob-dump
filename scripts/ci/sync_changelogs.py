@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Generates <package>/CHANGELOG.md from the repo root's single
 hand-authored CHANGELOG.md — the only source of truth for changelog
-content. Not committed anywhere: pub.dev/PyPI each require a package to
-ship its own CHANGELOG.md, so release.yml runs this ephemerally, right
-before each publish step, in that ephemeral checkout only (same pattern
-already used for flutter/pubspec.yaml's publish-time dependency-version
-swap — never written back to the repo).
+content. Not committed anywhere: pub.dev requires a package to ship its
+own CHANGELOG.md, so release.yml runs this ephemerally, right before
+publish-dart/publish-flutter, in that ephemeral checkout only (same
+pattern already used for flutter/pubspec.yaml's publish-time
+dependency-version swap — never written back to the repo).
+
+dart/.gitignore and flutter/.gitignore deliberately do NOT ignore
+CHANGELOG.md, even though it's generated: `pub publish` decides package
+contents by git tracking status, and explicitly excludes gitignored files
+even if force-added to the index (confirmed empirically — `git add -f`
+still gets excluded, with a "checked in while gitignored" warning) — an
+untracked-but-not-ignored file is what actually works, no commit needed.
 
 Root file format: version headings ("## [X]" or "## [X] - DATE"), each
 containing one "### <pkg>/" subsection per package that changed in that

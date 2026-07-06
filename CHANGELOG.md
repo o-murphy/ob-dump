@@ -6,10 +6,16 @@ truth. Each package's own `CHANGELOG.md` (`dart/CHANGELOG.md`,
 `flutter/CHANGELOG.md`, `py/CHANGELOG.md`) is **generated** from this file
 by `scripts/ci/sync_changelogs.py` — a physical copy still has to exist in
 each package's own directory because pub.dev refuses to publish a package
-without one, so a purely root-level file can't fully replace them. **Edit
-this file, then run `scripts/ci/sync_changelogs.py`** (CI regenerates and
-fails the build if a package's copy is out of sync — see
-`.github/workflows/changelog-sync.yml`).
+without one, so a purely root-level file can't fully replace them. It's
+never committed to the repo: `release.yml`'s `publish-dart`/
+`publish-flutter` jobs each generate their own package's copy fresh, right
+before `pub publish`, in that ephemeral checkout only (**not** gitignored —
+`pub publish` determines package contents via git tracking status, and
+deliberately excludes gitignored files even if force-staged, so the
+generated file has to be a plain untracked-but-not-ignored file for `pub`
+to actually include it — confirmed empirically, not assumed). **Edit this
+file, then run `scripts/ci/sync_changelogs.py [pkg]` locally** if you want
+to preview a package's own rendered copy.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).

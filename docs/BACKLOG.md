@@ -1112,13 +1112,22 @@ decoder's output exactly.
     copy — version headings, each containing per-package `### dart/`/
     `### flutter/`/`### py/` subsections (only the packages that actually
     changed that release). `dart/CHANGELOG.md`/`flutter/CHANGELOG.md`/
-    `py/CHANGELOG.md` are **not committed at all** (removed from git,
-    added to each package's own `.gitignore`) — `scripts/ci/sync_changelogs.py`
-    generates them fresh, ephemerally, as a `release.yml` step immediately
-    before each package's own publish step (`publish-dart`/`publish-flutter`/
-    not `publish-pypi`, since PyPI has no equivalent hard requirement) —
-    same "never written back to the repo" pattern `publish-flutter` already
-    uses for its own ephemeral `pubspec.yaml` ref-swap. `create-release`'s
+    `py/CHANGELOG.md` are **not committed at all** (removed from git) —
+    `scripts/ci/sync_changelogs.py` generates them fresh, ephemerally, as a
+    `release.yml` step immediately before each package's own publish step
+    (`publish-dart`/`publish-flutter`/ not `publish-pypi`, since PyPI has no
+    equivalent hard requirement) — same "never written back to the repo"
+    pattern `publish-flutter` already uses for its own ephemeral
+    `pubspec.yaml` ref-swap. Deliberately **not** added to `dart/.gitignore`/
+    `flutter/.gitignore` despite being generated: `dart pub publish`/
+    `flutter pub publish` decide package contents by git tracking status,
+    and explicitly exclude gitignored files even if force-staged
+    (`git add -f` still triggers a "checked in while gitignored" warning
+    and gets dropped from the archive — confirmed empirically after a real
+    `publish-dart` run failed exactly this way, `Package validation found
+    ... Please add a CHANGELOG.md`, despite the generation step itself
+    having succeeded) — a plain untracked-but-not-ignored file is what
+    actually gets included, no commit needed either. `create-release`'s
     extraction step now reads the root file directly instead of looping
     over three.
 

@@ -1,7 +1,3 @@
 .dart_tool/
 .packages
 pubspec.lock
-
-# Generated from ../CHANGELOG.md by scripts/ci/sync_changelogs.py, only
-# ephemerally, right before publish — see that file's own header.
-CHANGELOG.md

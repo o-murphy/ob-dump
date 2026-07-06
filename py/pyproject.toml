@@ -39,6 +39,7 @@ where = ["src"]
 include = ["ob_dump_reader*"]
 
 [tool.setuptools_scm]
+root = ".."
 fallback_version = "0.0.0.dev0"
 
 [project.optional-dependencies]
