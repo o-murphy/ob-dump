@@ -1,7 +1,7 @@
 # ob-dump-reader
 
 ![GitHub License](https://img.shields.io/github/license/o-murphy/ob-dump)
-![PyPI Version](https://img.shields.io/pypi/v/ob_dump_reader?logo=pypi)
+![PyPI Version](https://img.shields.io/pypi/v/ob-dump-reader?logo=pypi)
 
 Minimal ObjectBox LMDB reader toolkit for Python. Its core job: walk a
 `data.mdb` file and hand you each stored object's raw FlatBuffers table

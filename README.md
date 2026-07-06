@@ -1,10 +1,10 @@
 # ob-dump
 
 ![GitHub License](https://img.shields.io/github/license/o-murphy/ob-dump)
-![GitHub Release](https://img.shields.io/github/v/release/o-murphy/ob-dump)
+![GitHub Release](https://img.shields.io/github/v/release/o-murphy/ob-dump?include_prereleases&logo=github)
 ![Dart Pub Version](https://img.shields.io/pub/v/ob_dump_reader?logo=dart)
 ![Flutter Pub Version](https://img.shields.io/pub/v/ob_dump_reader_flutter?logo=flutter)
-![PyPI Version](https://img.shields.io/pypi/v/ob_dump_reader?logo=pypi)
+![PyPI Version](https://img.shields.io/pypi/v/ob-dump-reader?logo=pypi)
 
 
 Reads an [ObjectBox](https://objectbox.io/) LMDB store (`data.mdb`) directly
@@ -22,15 +22,17 @@ database.
 
 ## Table of contents
 
-- [Building](#building)
-- [CLI](#cli)
-- [C API](#c-api)
-- [Dart](#dart)
-- [Python](#python)
-- [Building your own reader in another language](#building-your-own-reader-in-another-language)
-- [Scope](#scope)
-- [Integrity & Licensing](#integrity--licensing)
-- [License](#license)
+- [ob-dump](#ob-dump)
+  - [Table of contents](#table-of-contents)
+  - [Building](#building)
+  - [CLI](#cli)
+  - [C API](#c-api)
+  - [Dart](#dart)
+  - [Python](#python)
+  - [Building your own reader in another language](#building-your-own-reader-in-another-language)
+  - [Scope](#scope)
+  - [Integrity \& Licensing](#integrity--licensing)
+  - [License](#license)
 
 ## Building
 
