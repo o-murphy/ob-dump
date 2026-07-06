@@ -3,13 +3,35 @@ from pathlib import Path
 import shutil
 import tempfile
 
+import lmdb
+
+__all__ = (
+    "read_to_many_targets",
+    "read_to_many_targets_unsafe",
+)
 
 _KEY_TYPE_RELATION: int = 0x08
 _RELATION_DIRECTION_FORWARD: int = 0
 
 
-def _read_to_many_targets_form_dir():
-    pass
+def _read_to_many_targets_form_dir(
+    objectbox_dir: PathLike,
+    relation_id: int,
+    source_object_id: int,
+    /,
+    safe: bool = True,
+):
+    # 1. Opening the LMDB environment
+    with lmdb.Environment(
+        str(objectbox_dir),
+        map_size=512 * 1024 * 1024,
+        max_dbs=4,
+        readonly=safe,  # set to False for initial write transaction
+    ) as db:
+        # 2. Write transaction to initialize the root handle (as required by LMDB/Objectbox)
+        if not safe:
+            with db.begin(write=True) as txn:
+                pass
 
 
 def _read_to_many_targets(

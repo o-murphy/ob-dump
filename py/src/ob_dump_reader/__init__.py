@@ -8,6 +8,13 @@ import shutil
 import lmdb
 from ob_dump_reader.decode_helper import read_uint32be
 
+__all__ = (
+    "read_ob_records",
+    "read_objectbox_records",
+    "read_ob_records_unsafe",
+    "read_objectbox_records_unsafe",
+)
+
 
 @dataclass
 class ObRecord:

@@ -3,6 +3,15 @@ import json
 from typing import Any
 from flatbuffers import flexbuffers
 
+__all__ = (
+    "uint32be",
+    "read_uint32be",
+    "bytes_to_hex",
+    "bytes_to_uuid_string",
+    "try_parse_json_string",
+    "decode_flex",
+)
+
 
 def uint32be(v: int) -> list[int]:
     return [
