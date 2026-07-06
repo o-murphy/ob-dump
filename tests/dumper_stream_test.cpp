@@ -48,6 +48,24 @@ std::array<uint8_t, 8> dataKey(int entityId, uint32_t objectId) {
     return key;
 }
 
+// ToMany relation link key — see docs/BACKLOG.md "Explicitly out of scope"
+// -> ToMany for how this 12-byte format (type 0x08, empty value) was
+// determined against a real ObjectBox-Dart project.
+std::array<uint8_t, 12> relationKey(int relationId, int direction, uint32_t sourceId, uint32_t targetId) {
+    std::array<uint8_t, 12> key{};
+    key[0] = 0x08;  // type: relation link
+    key[3] = static_cast<uint8_t>((relationId << 2) | direction);
+    key[4] = static_cast<uint8_t>(sourceId >> 24);
+    key[5] = static_cast<uint8_t>(sourceId >> 16);
+    key[6] = static_cast<uint8_t>(sourceId >> 8);
+    key[7] = static_cast<uint8_t>(sourceId);
+    key[8] = static_cast<uint8_t>(targetId >> 24);
+    key[9] = static_cast<uint8_t>(targetId >> 16);
+    key[10] = static_cast<uint8_t>(targetId >> 8);
+    key[11] = static_cast<uint8_t>(targetId);
+    return key;
+}
+
 void check(int rc, const char* what) {
     if (rc != 0) {
         fprintf(stderr, "%s: %s\n", what, mdb_strerror(rc));
@@ -74,7 +92,9 @@ void writeFixture(const std::string& dir) {
     // *some* entity in the schema and *some* decodable (possibly empty)
     // table per record; fb_decode_test.cpp already covers field decoding
     // in depth.
-    auto put = [&](const std::array<uint8_t, 8>& key, const std::vector<uint8_t>& val) {
+    // Generic on the key type: both the 8-byte object-data/schema keys and
+    // the 12-byte relation-link keys go through this same helper.
+    auto put = [&](const auto& key, const std::vector<uint8_t>& val) {
         MDB_val k{key.size(), const_cast<uint8_t*>(key.data())};
         MDB_val v{val.size(), const_cast<uint8_t*>(val.data())};
         check(mdb_put(txn, dbi, &k, &v, 0), "mdb_put");
@@ -96,6 +116,16 @@ void writeFixture(const std::string& dir) {
     put(dataKey(1, 2), emptyTable);
     put(dataKey(2, 1), emptyTable);
 
+    // Weapon#1 --relation 1 (forward)--> Ammo#1, Ammo#2. Also write the
+    // auto-maintained backward links (Ammo#1/#2 -> Weapon#1) to confirm
+    // toManyTargets's forward-only prefix match correctly ignores them
+    // rather than accidentally picking them up too.
+    const std::vector<uint8_t> empty;
+    put(relationKey(1, /*forward=*/0, 1, 1), empty);
+    put(relationKey(1, /*forward=*/0, 1, 2), empty);
+    put(relationKey(1, /*backward=*/2, 1, 1), empty);
+    put(relationKey(1, /*backward=*/2, 2, 1), empty);
+
     check(mdb_txn_commit(txn), "mdb_txn_commit");
     mdb_env_close(env);
 }
@@ -103,7 +133,14 @@ void writeFixture(const std::string& dir) {
 const char* kModelJson = R"({
   "entities": [
     {"id": "1:1", "name": "Ammo", "properties": []},
-    {"id": "2:2", "name": "Weapon", "properties": []}
+    {
+      "id": "2:2",
+      "name": "Weapon",
+      "properties": [],
+      "relations": [
+        {"id": "1:99", "name": "compatibleAmmo", "targetId": "1:1"}
+      ]
+    }
   ]
 })";
 
@@ -136,7 +173,12 @@ int main() {
         assert(seen[1].objectId == 2);
         assert(seen[2].entityName == "Weapon");
         assert(seen[2].objectId == 1);
+        // ToMany relation ("compatibleAmmo", forward direction) resolved to
+        // Weapon#1's two linked Ammo ids — the backward-direction entries
+        // written into the same fixture (Ammo -> Weapon) must not leak in.
+        assert(seen[2].fieldsJson.find("\"compatibleAmmo\":[1,2]") != std::string::npos);
         std::puts("dumpStreaming visits all records in order: OK");
+        std::puts("dumpStreaming resolves ToMany relations: OK");
     }
 
     // --- early stop ---

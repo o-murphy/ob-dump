@@ -28,11 +28,25 @@ std::string schemaToJson(const std::string& modelJson) {
             if (const char* ext = externalTypeName(prop.externalType)) p["externalType"] = ext;
             properties.push_back(std::move(p));
         }
-        entities.push_back({
+        auto relations = nlohmann::json::array();
+        for (const auto& rel : entity->relations) {
+            relations.push_back({
+                {"id", rel.id},
+                {"name", rel.name},
+                {"targetEntityId", rel.targetEntityId},
+            });
+        }
+
+        nlohmann::json entityJson = {
             {"entityId", entity->entityId},
             {"name", entity->name},
             {"properties", std::move(properties)},
-        });
+        };
+        // Omitted entirely when empty — most entities have no ToMany
+        // relation, and repeating "relations": [] everywhere is noise (same
+        // reasoning as omitting "unsigned"/"externalType" above).
+        if (!relations.empty()) entityJson["relations"] = std::move(relations);
+        entities.push_back(std::move(entityJson));
     }
 
     nlohmann::json out = {{"entities", std::move(entities)}};

@@ -24,6 +24,9 @@ std::string dumpToJson(const std::string& mdbPath, const std::string& modelJson)
 
         nlohmann::json obj = decodeObject(rec.data, rec.size, *entity);
         obj["id"] = rec.objectId;
+        for (const RelationDef& rel : entity->relations) {
+            obj[rel.name] = reader.toManyTargets(rel.id, rec.objectId);
+        }
 
         auto& arr = result[entity->name];
         if (!arr.is_array()) arr = nlohmann::json::array();
@@ -48,6 +51,9 @@ void dumpStreaming(const std::string& mdbPath, const std::string& modelJson,
 
         nlohmann::json obj = decodeObject(rec.data, rec.size, *entity);
         obj["id"] = rec.objectId;
+        for (const RelationDef& rel : entity->relations) {
+            obj[rel.name] = reader.toManyTargets(rel.id, rec.objectId);
+        }
 
         return callback(entity->name, rec.objectId, obj.dump());
     });

@@ -30,6 +30,16 @@ static const char* kSampleModel = R"({
         {"id": "8:8", "name": "unsignedCount", "type": 5, "flags": 8192},
         {"id": "9:9", "name": "externalId", "type": 23, "externalType": 102}
       ]
+    },
+    {
+      "id": "2:2222",
+      "name": "Weapon",
+      "properties": [
+        {"id": "1:1", "name": "id", "type": 6}
+      ],
+      "relations": [
+        {"id": "1:9999", "name": "compatibleAmmo", "targetId": "1:1111"}
+      ]
     }
   ]
 })";
@@ -76,6 +86,13 @@ int main() {
     assert(pos("extra:[ubyte];") < pos("weird:ubyte (deprecated);"));
     assert(pos("weird:ubyte (deprecated);") < pos("unsignedCount:uint;"));
     assert(pos("unsignedCount:uint;") < pos("externalId:[byte];"));
+
+    // ToMany relations get no field (not representable in a FlatBuffers
+    // table) but are surfaced as a comment naming the relation and its
+    // target entity, inside the owning entity's table block.
+    assert(contains(fbs, "table Weapon {"));
+    assert(contains(fbs,
+        "// ToMany relation: compatibleAmmo (relation id 1) -> Ammo"));
 
     std::puts("fbs_gen_test: OK");
     return 0;

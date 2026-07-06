@@ -94,10 +94,23 @@ struct PropertyDef {
     int  externalType = ExternalPropertyType::Unknown;  // "externalType", if present
 };
 
+// A ToMany relation declared on an entity (model.json's "relations" array —
+// distinct from "properties": not part of the FlatBuffers table at all, and
+// not a PropertyType). `id` drives the LMDB relation-index key's
+// `(id << 2) | direction` byte — see LmdbReader::toManyTargets and
+// docs/BACKLOG.md "Explicitly out of scope" -> ToMany for how this was
+// determined (a real ObjectBox-Dart project, built and inspected directly).
+struct RelationDef {
+    int id;   // permanent numeric relation id from "id:uid"
+    std::string name;
+    int targetEntityId;  // from "targetId":"id:uid"
+};
+
 struct EntityDef {
     int entityId;
     std::string name;
     std::vector<PropertyDef> properties;
+    std::vector<RelationDef> relations;
 };
 
 class Schema {

@@ -60,14 +60,17 @@ buffering/lookahead.
 The other two modes export the *schema*, not the data:
 
 `--schema` prints a clean, minimal JSON listing of every entity/property
-(id, name, type, computed vtable slot) — stripped of ObjectBox's model.json
+(id, name, type, computed vtable slot) and any `ToMany` relations it
+declares (id, name, target entity) — stripped of ObjectBox's model.json
 noise. `--fbs` generates a valid FlatBuffers IDL file, so any language's
 `flatc` can generate its own typed reader for the raw table bytes instead of
 depending on this library — verified against a real database (see
 `docs/BACKLOG.md`), but note it only replaces the per-record FlatBuffers
-decode step, not LMDB access or the ObjectBox key-format parsing (see
-`docs/BACKLOG.md` "Schema export" for exactly what that does and doesn't
-cover).
+decode step, not LMDB access, the ObjectBox key-format parsing, or `ToMany`
+relations (not representable in a FlatBuffers table at all — a `flatc`
+consumer needs its own relation-key lookup, same as this library's own;
+see `docs/BACKLOG.md` "Schema export" for exactly what that does and
+doesn't cover).
 
 ## C API
 
@@ -159,9 +162,12 @@ Reads all 21 ObjectBox `PropertyType` codes: every fixed-width scalar
 `ToOne` relations, `DateNano`), `String`, every vector form of the above —
 with correct signedness (the `UNSIGNED` property flag is honored, not just
 the type code) — and `Flex` (a dynamic, embedded FlexBuffers value, decoded
-recursively into the equivalent JSON shape). `ToMany` relations are not
-implemented — they live in a separate LMDB relation-index structure, not a
-table field. The `ExternalPropertyType` annotation layer (`Uuid`, `Int128`,
+recursively into the equivalent JSON shape). `ToMany` relations are also
+resolved: they live in a separate LMDB relation-index structure, not a
+table field, so `--json` adds them as a plain array of target ids under
+the relation's name after decoding the record itself (not a nested/eager
+object fetch — the same "just the fk" shape already used for `ToOne`).
+The `ExternalPropertyType` annotation layer (`Uuid`, `Int128`,
 etc.) is partially handled: `Uuid`/`Int128`/`Decimal128`/`Bson` decode as
 hex/UUID strings instead of raw byte arrays, and `Json`/`JavaScript`/
 `JsonToNative` decode as parsed JSON instead of an escaped JSON string.

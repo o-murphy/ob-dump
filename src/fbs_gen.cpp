@@ -132,6 +132,16 @@ std::string generateFbs(const std::string& modelJson) {
                 writeField(out, *it->second);
             }
         }
+        // ToMany relations aren't representable in a FlatBuffers table at
+        // all (see docs/BACKLOG.md "ToMany relations") — no field emitted,
+        // but listed here as a comment so a flatc-generated reader's author
+        // knows one exists and needs its own relation-key lookup.
+        for (const auto& rel : entity->relations) {
+            const EntityDef* target = schema.find(rel.targetEntityId);
+            out << "  // ToMany relation: " << rel.name << " (relation id "
+                << rel.id << ") -> " << (target != nullptr ? target->name : "?")
+                << " — not a table field, see docs/BACKLOG.md\n";
+        }
         out << "}\n\n";
     }
 

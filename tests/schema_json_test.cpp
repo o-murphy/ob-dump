@@ -23,6 +23,9 @@ static const char* kSampleModel = R"({
       "name": "Weapon",
       "properties": [
         {"id": "1:1", "name": "id", "type": 6}
+      ],
+      "relations": [
+        {"id": "1:9999", "name": "compatibleAmmo", "targetId": "1:1111"}
       ]
     }
   ]
@@ -62,7 +65,18 @@ int main() {
     assert(externalProp.at("name").get<std::string>() == "externalId");
     assert(externalProp.at("externalType").get<std::string>() == "Uuid");
 
-    assert(j.at("entities").at(1).at("name").get<std::string>() == "Weapon");
+    const auto& weapon = j.at("entities").at(1);
+    assert(weapon.at("name").get<std::string>() == "Weapon");
+
+    // Not notable for Ammo — no relations declared, key must be absent
+    // entirely rather than an empty array.
+    assert(!ammo.contains("relations"));
+
+    assert(weapon.at("relations").size() == 1);
+    const auto& rel = weapon.at("relations").at(0);
+    assert(rel.at("id").get<int>() == 1);
+    assert(rel.at("name").get<std::string>() == "compatibleAmmo");
+    assert(rel.at("targetEntityId").get<int>() == 1);
 
     std::puts("schema_json_test: OK");
     return 0;

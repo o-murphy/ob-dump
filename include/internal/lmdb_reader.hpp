@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 // Forward-declare LMDB's opaque types so this header doesn't force every
 // includer to pull in <lmdb.h>.
@@ -25,10 +26,18 @@ struct ObjectRecord {
 
 // Opens an ObjectBox LMDB store read-only and walks its root database.
 //
-// Key format (8 bytes, root/unnamed db only — ObjectBox never uses named
-// sub-databases): [type:1][0x00][0x00][entity_id*4:1][object_id:u32 BE].
-// type: 0x00 = schema entry, 0x18 = object data, 0x20 = index entry.
-// See docs/BACKLOG.md for how this was determined.
+// Key formats (root/unnamed db only — ObjectBox never uses named
+// sub-databases), confirmed against a real ObjectBox-Dart project built and
+// inspected directly (see docs/BACKLOG.md "Explicitly out of scope" ->
+// ToMany for the methodology):
+//   - object data / schema (8 bytes): [type:1][0x00][0x00][entity_id*4:1][object_id:u32 BE].
+//     type: 0x00 = schema entry, 0x18 = object data.
+//   - ToMany relation link (12 bytes): [0x08][0x00][0x00][(relation_id<<2)|direction:1][source_id:u32 BE][target_id:u32 BE],
+//     value always empty. direction: 0 = forward (declared direction), 2 =
+//     backward (auto-maintained reverse index).
+//   - `0x20` has been seen as a key type byte too but its structure is
+//     unverified by either investigation — likely a property index, not a
+//     relation; not read by this class.
 class LmdbReader {
 public:
     // `path` may be either the directory containing data.mdb+lock.mdb, or
@@ -49,6 +58,13 @@ public:
     // streaming consumers (see dumper.hpp's dumpStreaming) that may want to
     // bail out before walking a large database to completion.
     void forEachObject(const std::function<bool(const ObjectRecord&)>& cb) const;
+
+    // Every target object id linked from `sourceObjectId` via ToMany
+    // relation `relationId`, in the forward (declared) direction. Empty if
+    // none. A separate cursor lookup per (relation, object) — not part of
+    // forEachObject's single walk, since relation links live at different
+    // keys than the object-data records they're associated with.
+    std::vector<uint32_t> toManyTargets(int relationId, uint32_t sourceObjectId) const;
 
 private:
     MDB_env* env_ = nullptr;

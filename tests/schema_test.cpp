@@ -16,6 +16,16 @@ static const char* kSampleModel = R"({
         {"id": "6:3", "name": "bcMv1", "type": 29},
         {"id": "18:4", "name": "isFactory", "type": 1}
       ]
+    },
+    {
+      "id": "2:2222",
+      "name": "Book",
+      "properties": [
+        {"id": "1:5", "name": "id", "type": 6}
+      ],
+      "relations": [
+        {"id": "1:9999", "name": "authors", "targetId": "1:1111"}
+      ]
     }
   ]
 })";
@@ -37,6 +47,17 @@ int main() {
     assert(ammo->properties[3].type == ob_dump_internal::PropertyType::Bool);
 
     assert(schema.find(999) == nullptr);
+
+    // Entities with no "relations" array (Ammo) parse with an empty list,
+    // not an error — most entities don't declare any ToMany relation.
+    assert(ammo->relations.empty());
+
+    const ob_dump_internal::EntityDef* book = schema.find(2);
+    assert(book != nullptr);
+    assert(book->relations.size() == 1);
+    assert(book->relations[0].id == 1);
+    assert(book->relations[0].name == "authors");
+    assert(book->relations[0].targetEntityId == 1);
 
     std::puts("schema_test: OK");
     return 0;

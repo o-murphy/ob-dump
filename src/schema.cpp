@@ -81,6 +81,16 @@ Schema Schema::parse(const std::string& modelJson) {
             entity.properties.push_back(std::move(prop));
         }
 
+        if (e.contains("relations")) {
+            for (const auto& r : e.at("relations")) {
+                RelationDef rel;
+                rel.id             = parseLeadingId(r.at("id").get<std::string>());
+                rel.name           = r.at("name").get<std::string>();
+                rel.targetEntityId = parseLeadingId(r.at("targetId").get<std::string>());
+                entity.relations.push_back(std::move(rel));
+            }
+        }
+
         schema.entitiesById_.emplace(entity.entityId, std::move(entity));
     }
 

@@ -218,9 +218,10 @@ decoder's output exactly.
 
 ## Explicitly out of scope for v1 (tracked here, not silently ignored)
 
-- **`ToMany` relations — wire format now confirmed empirically, decode not
-  yet implemented.** Previously blocked on "no real schema encountered
-  that uses one" — resolved by building one: a scratch Dart-native project
+- ~~`ToMany` relations~~ — **done.** Wire format confirmed empirically
+  first, then implemented against it. Previously blocked on "no real
+  schema encountered that uses one" — resolved by building one: a scratch
+  Dart-native project
   (`dart pub add objectbox`, `dart pub add --dev build_runner
   objectbox_generator:any`, the real `objectbox-c` native lib via
   `objectbox-dart`'s own `install.sh`), two entities (`Author`, `Book`)
@@ -258,15 +259,38 @@ decoder's output exactly.
   this investigation (no `@Index()` property was tested) and may refer to
   something else entirely (a property index, not a relation).
 
-  **Not implemented yet** — decoding this would mean: for each object,
-  walking model.json's `relations` list on its entity, and for each one,
-  a separate cursor lookup (`set_range` on `[0x08,0,0,(relationId<<2),objectId]`)
-  to collect target ids into e.g. `"authorIds": [1, 2]` in the JSON
-  output. Straightforward given this now-confirmed format, just not yet
-  written or tested against `decodeObject`'s existing per-record flow
-  (which currently only reads the FlatBuffers table itself, not a second
-  LMDB structure per record) — left for a follow-up pass rather than
-  folded in here.
+  **Implemented** as a separate lookup, not folded into `decodeObject`:
+  `EntityDef` gained a `relations` list (`RelationDef{id, name,
+  targetEntityId}`, parsed from model.json's `"relations"` array —
+  `schema.cpp`), and `LmdbReader::toManyTargets(relationId,
+  sourceObjectId)` does the `MDB_SET_RANGE` cursor lookup described above
+  (forward direction only — the reverse index exists for ObjectBox's own
+  query engine, not needed for a one-directional dump) and returns the
+  target ids as a plain `vector<uint32_t>`. `dumper.cpp`'s `dumpToJson`/
+  `dumpStreaming` call it once per relation per record, after
+  `decodeObject`, and add the result as `obj[relationName] = [...]` — a
+  plain array of target ids, the same "just the fk, no eager nested
+  object" shape already used for `ToOne` (`PropertyType::Relation`).
+  Chosen over recursively embedding the full target objects: avoids
+  duplicate/circular-reference concerns for free, and matches how a
+  consumer would already have to look up `ToOne` targets by id anyway.
+  Also surfaced in `--schema`'s JSON output (`schema_json.cpp`) as a
+  `"relations": [{"id", "name", "targetEntityId"}]` array on the owning
+  entity, omitted when empty (same convention as `"unsigned"`/
+  `"externalType"`) — **not** added to `--fbs` generation, since a
+  `flatc`-generated reader in another language would need this same
+  separate LMDB lookup itself; there's nothing about it representable in
+  the FlatBuffers table shape `.fbs` describes.
+
+  Covered by `tests/schema_test.cpp` (relation parsing, including entities
+  with none), `tests/schema_json_test.cpp` (`--schema` output), and
+  `tests/dumper_stream_test.cpp` (a real hand-built LMDB fixture with both
+  forward and backward relation-link keys, confirming the decoded output
+  only picks up the forward ones). Re-verified against real ebalistyka
+  data: its schema declares zero `ToMany` relations (checked all entities'
+  `"relations"` arrays — all empty), so this is a true no-op there, and
+  the existing `--json` output is unchanged (still the same 18 records
+  across 10 entities as every prior run).
 - ~~`Flex` properties~~ — **done, see phased-plan item 20 below.**
 - **`ExternalPropertyType` — partially implemented.** This is a semantic
   annotation *on top of* a base `PropertyType` (the `"externalType"` field
