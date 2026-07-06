@@ -283,6 +283,44 @@ void testExternalTypeByteVectorsDecodeAsStrings() {
     std::puts("testExternalTypeByteVectorsDecodeAsStrings: OK");
 }
 
+// ExternalPropertyType Json/JavaScript/JsonToNative are all physically a
+// String on the wire, but the content is itself JSON — decoded as a real
+// JSON value instead of one extra layer of string-escaping. JavaScript
+// falls back to a plain string when its content isn't valid JSON (e.g. an
+// actual JS expression, not just a JSON literal).
+void testJsonExternalTypeStringsDecodeAsParsedJson() {
+    flatbuffers::FlatBufferBuilder fbb;
+    auto jsonOff = fbb.CreateString(std::string(R"({"a":1,"b":[true,null]})"));
+    auto jsToNativeOff = fbb.CreateString(std::string("[1,2,3]"));
+    auto notJsonOff = fbb.CreateString(std::string("function() { return 1; }"));
+
+    auto start = fbb.StartTable();
+    fbb.AddOffset(slotFor(1), jsonOff);
+    fbb.AddOffset(slotFor(2), jsToNativeOff);
+    fbb.AddOffset(slotFor(3), notJsonOff);
+    auto end = fbb.EndTable(start);
+    fbb.Finish(flatbuffers::Offset<flatbuffers::Table>(end));
+
+    EntityDef entity;
+    entity.entityId = 1;
+    entity.name     = "JsonExternalTypes";
+    entity.properties = {
+        {1, "jsonField", PropertyType::String, false, ExternalPropertyType::Json},
+        {2, "jsonToNativeField", PropertyType::String, false, ExternalPropertyType::JsonToNative},
+        {3, "jsField", PropertyType::String, false, ExternalPropertyType::JavaScript},
+    };
+
+    nlohmann::json j = decodeObject(fbb.GetBufferPointer(), fbb.GetSize(), entity);
+    assert(j.at("jsonField").is_object());
+    assert(j.at("jsonField").at("a").get<int>() == 1);
+    assert((j.at("jsonField").at("b") == nlohmann::json::array({true, nullptr})));
+    assert((j.at("jsonToNativeField") == nlohmann::json::array({1, 2, 3})));
+    assert(j.at("jsField").is_string());
+    assert(j.at("jsField").get<std::string>() == "function() { return 1; }");
+
+    std::puts("testJsonExternalTypeStringsDecodeAsParsedJson: OK");
+}
+
 // Wraps a FlexBuffers-encoded blob as the sole ByteVector field of a
 // one-property "Flex" entity, decodes it, and returns the resulting value
 // at that field (not the whole object) for easy assertions.
@@ -422,6 +460,7 @@ int main() {
     testUnknownTypeIsSkipped();
     testUnsignedIntegersDecodeCorrectly();
     testExternalTypeByteVectorsDecodeAsStrings();
+    testJsonExternalTypeStringsDecodeAsParsedJson();
     testFlexMapDecodesToJsonObject();
     testFlexVectorRootDecodesToJsonArray();
     testCorruptFlexBufferThrows();

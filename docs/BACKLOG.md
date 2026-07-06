@@ -235,10 +235,14 @@ decoder's output exactly.
   array of small integers (`fb_decode.cpp`'s `decodeByteVectorAsBlobString`;
   `--fbs` generation adds a `// external type: X` comment, since the `.fbs`
   field type itself doesn't change). `Json`(109)/`JavaScript`(111)/
-  `JsonToNative`(112) need no extra work — their base type is `String`,
-  already decoded correctly; the only possible improvement there is
-  cosmetic (parsing the string content as nested JSON instead of leaving it
-  as an escaped JSON string), not attempted. `FlexMap`(107)/`FlexVector`(108)
+  `JsonToNative`(112) — done: their base type is `String`, already decoded
+  correctly, and the string content is now also parsed as JSON
+  (`decodeStringAsJson` in `fb_decode.cpp`) instead of being left as one
+  extra layer of escaped-string JSON. Falls back to the raw string on
+  parse failure (covered by a test: a `JavaScript` field holding an actual
+  JS function expression, not valid JSON), since `JavaScript` content isn't
+  guaranteed to be valid JSON the way `Json`/`JsonToNative` are expected to
+  be. `FlexMap`(107)/`FlexVector`(108)
   need no extra work either now that `Flex` itself decodes (item 20 below):
   they're just a semantic promise that the root value is specifically a map
   or vector, which the generic `Flex` decoder already handles regardless.

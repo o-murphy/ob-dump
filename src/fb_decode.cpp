@@ -68,6 +68,29 @@ void decodeString(const Table* t, Verifier& v, flatbuffers::voffset_t slot,
     }
 }
 
+// ExternalPropertyType Json/JavaScript/JsonToNative: same wire encoding as a
+// plain String, but the content is itself JSON — parse it so the output
+// holds a real JSON value instead of one extra layer of string-escaping.
+// Falls back to the raw string on parse failure, since JavaScript source
+// isn't guaranteed to be valid JSON (it's the loosest of the three).
+void decodeStringAsJson(const Table* t, Verifier& v, flatbuffers::voffset_t slot,
+                        const std::string& name, nlohmann::json& out) {
+    if (!t->CheckField(slot)) return;
+    if (!t->VerifyOffset(v, slot)) {
+        throw std::runtime_error("corrupt record: bad string offset '" + name + "'");
+    }
+    const auto* str = t->GetPointer<const flatbuffers::String*>(slot);
+    if (!v.VerifyString(str)) {
+        throw std::runtime_error("corrupt record: bad string contents '" + name + "'");
+    }
+    if (str == nullptr) return;
+    try {
+        out[name] = nlohmann::json::parse(str->str());
+    } catch (const nlohmann::json::parse_error&) {
+        out[name] = str->str();
+    }
+}
+
 // BoolVector needs its own function for the same reason decodeBool does:
 // each element is a wire uint8_t but must become a JSON true/false.
 void decodeBoolVector(const Table* t, Verifier& v, flatbuffers::voffset_t slot,
@@ -298,7 +321,17 @@ nlohmann::json decodeObject(const uint8_t* data, size_t size, const EntityDef& e
                 break;
             case PropertyType::Float:  decodeScalar<float>(table, verifier, slot, prop.name, out); break;
             case PropertyType::Double: decodeScalar<double>(table, verifier, slot, prop.name, out); break;
-            case PropertyType::String: decodeString(table, verifier, slot, prop.name, out); break;
+            case PropertyType::String:
+                // Json/JavaScript/JsonToNative: string content is itself
+                // JSON — parse it instead of leaving it double-escaped.
+                if (prop.externalType == ExternalPropertyType::Json ||
+                    prop.externalType == ExternalPropertyType::JavaScript ||
+                    prop.externalType == ExternalPropertyType::JsonToNative) {
+                    decodeStringAsJson(table, verifier, slot, prop.name, out);
+                } else {
+                    decodeString(table, verifier, slot, prop.name, out);
+                }
+                break;
 
             case PropertyType::BoolVector: decodeBoolVector(table, verifier, slot, prop.name, out); break;
             case PropertyType::ByteVector:
