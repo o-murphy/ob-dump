@@ -8,8 +8,16 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
-: "${OB_DUMP_VERSION:=0.1.0-dev}"
+# No fallback hardcoded here — if OB_DUMP_VERSION isn't set, omit the
+# -D entirely so CMakeLists.txt's own `set(OB_DUMP_VERSION ... CACHE STRING
+# ...)` default is what applies. Two hardcoded defaults drift out of sync
+# with each other (this one already had, silently, after a real release
+# bumped the CMake one but not this file).
+cmake_version_flag=()
+if [ -n "${OB_DUMP_VERSION:-}" ]; then
+  cmake_version_flag=(-DOB_DUMP_VERSION="$OB_DUMP_VERSION")
+fi
 
-cmake -B build -DOB_DUMP_VERSION="$OB_DUMP_VERSION" "$@"
+cmake -B build "${cmake_version_flag[@]}" "$@"
 cmake --build build --config Release --parallel
 ctest --test-dir build --output-on-failure -C Release

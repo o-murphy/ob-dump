@@ -458,16 +458,16 @@ decoder's output exactly.
     patterns cover both the single-config layout (Linux/macOS, `build/`
     directly) and Windows' multi-config Visual Studio generator
     (`build/Release/`) without an OS-specific step; verified the Linux glob
-    against this project's own local build output, not able to verify the
-    Windows/macOS paths the same way (see caveat below). Important
-    caveat: these workflows have not actually been run yet — this repo has
-    no commits pushed to a remote yet (local commits are pending on the
-    user's own GPG signing setup), so "the C++/Dart core builds and its
-    unit tests pass on Windows and macOS" is reasoned through (portable
-    libraries throughout: LMDB officially supports Windows, `dart_lmdb2`
-    lists Windows/macOS support in its own README) but **not yet
-    empirically confirmed** on those two platforms — only Linux has
-    actually been built and tested so far. Confirm once pushed.
+    against this project's own local build output, and now also confirmed
+    on Windows and macOS the same way this whole project verifies anything
+    else — not just reasoned through: pushed to `origin`/`gitlab` and
+    watched real runs (`gh run list --workflow=release.yml`), including a
+    real, non-dry-run release matrix (`gh run view 28755549996`) with
+    every leg green — `ubuntu-latest`, `ubuntu-24.04-arm`,
+    `windows-latest`, `windows-11-arm`, and the `macos-latest` universal
+    build. Both artifact-glob variants (single-config `build/` vs.
+    Windows' multi-config `build/Release/`) are therefore empirically
+    confirmed, not just portability-reasoned.
 16. **`UNSIGNED` flag + partial `ExternalPropertyType` + big-endian doc
     correction** — done, see "Scope" and "Explicitly out of scope" above
     for full detail. Summary: integers now decode with correct signedness;
@@ -514,21 +514,22 @@ decoder's output exactly.
     transitive-plugin-discovery mechanism this design relies on actually
     works, not just that it should in theory.
 
-    Known loose end: `flutter analyze` reports one expected warning
-    (`Publishable packages can't have 'path' dependencies`) because
-    `ob_dump_reader` isn't published to pub.dev yet, so `flutter/`'s
-    dependency on it is a local `path:` — harmless during development
-    (doesn't fail CI, `flutter analyze` exits 0 on warnings), needs
-    switching to a real version constraint once `ob_dump_reader` is
-    actually published. `.github/workflows/flutter.yml` added (3-OS
-    matrix, `flutter pub get` + `flutter analyze`) — same "not run on a
-    real remote yet" caveat as item 15 applies here too.
+    Loose end, now resolved by the real 0.1.0-alpha.0 release (see item
+    18): `flutter analyze` used to report one expected warning
+    (`Publishable packages can't have 'path' dependencies`) while
+    `ob_dump_reader` wasn't on pub.dev yet — harmless during development
+    (doesn't fail CI, `flutter analyze` exits 0 on warnings), and only ever
+    meant to be swapped to a real version constraint at actual-publish
+    time, not permanently in the committed file (see the `TODO(release)`
+    comments in `flutter/pubspec.yaml` itself). `.github/workflows/flutter.yml`
+    (3-OS matrix, `flutter pub get` + `flutter analyze`) has since actually
+    run — repeatedly, on real pushes — same as item 15's build/test
+    matrix.
 18. **Release process: keeping `dart/` and `flutter/` versions in lockstep**
-    — done (the convention + a CI check; not an actual release, there
-    hasn't been one yet). Since `flutter/` is purely a re-export of `dart/`,
-    there's no reason for their version numbers to ever diverge — so the
-    rule is: **always bump both `pubspec.yaml`s together, to the same
-    version, in the same commit**, and tag both
+    — done, and now exercised by a real release. Since `flutter/` is purely
+    a re-export of `dart/`, there's no reason for their version numbers to
+    ever diverge — so the rule is: **always bump both `pubspec.yaml`s
+    together, to the same version, in the same commit**, and tag both
     (`dart-vX.Y.Z`/`flutter-vX.Y.Z` — matches the tag URLs already written
     into both `CHANGELOG.md`s' link references). Added
     `.github/workflows/version-parity.yml`: a single cheap job (no OS
@@ -538,16 +539,24 @@ decoder's output exactly.
     CI check. This turns "remember to keep them in sync" from a purely
     manual discipline into something CI actually enforces.
 
-    Also flagged inline, not just here: `flutter/pubspec.yaml`'s
-    `ob_dump_reader: path: ../dart` dependency has a `TODO(release)`
-    comment marking it as the thing that must change (to a real pub.dev
-    version constraint) before `flutter/` can actually be published —
-    that's also what's causing today's one `flutter analyze` warning (see
-    item 17). Actual release steps, for whenever that happens: (1) decide
-    the version, (2) bump both `pubspec.yaml`s + both `CHANGELOG.md`s,
-    (3) publish `ob_dump_reader` to pub.dev first, (4) update `flutter/`'s
-    path dep to that published version, (5) publish
-    `ob_dump_reader_flutter`, (6) tag both.
+    **`0.1.0-alpha.0` shipped for real** — confirmed via pub.dev's own API
+    (`curl https://pub.dev/api/packages/ob_dump_reader` /
+    `.../ob_dump_reader_flutter`, not assumed): both packages are live at
+    `0.1.0-alpha.0`, and the published `ob_dump_reader_flutter` pubspec
+    shows `ob_dump_reader: ^0.1.0-alpha.0` — a real version constraint, not
+    the path dep. The publish itself was done by hand (the user ran the
+    actual `pub publish` locally), not via `release.yml`'s
+    `publish-dart`/`publish-flutter` jobs — separately, `release.yml` has
+    also been run for real (`gh run view 28755549996`, all jobs green,
+    including `bump-versions`/`create-release`/`publish-dart`/
+    `publish-flutter`), so the automated path is verified to work
+    end-to-end too; the two just haven't been the same run yet. Either way,
+    the pattern that matters is unchanged: `flutter/pubspec.yaml`'s
+    checked-in `path: ../dart` + `publish_to: none` are permanent (for
+    local dev), and the swap to a real pub.dev constraint only ever exists
+    ephemerally at publish time (see the `TODO(release)` comments in that
+    file) — never committed back, whether that swap is done by the CI job
+    or by hand.
 19. **`.github/workflows/release.yml`** — done: a single `v*` tag push now
     drives the entire release (based on this project's own prior
     `a7p-dart` release workflow pattern, adapted for a monorepo with a C++
@@ -759,3 +768,16 @@ decoder's output exactly.
     rewired to call these scripts instead of inlining the bash, then
     re-validated with both `python3 -c "import yaml..."` and a freshly
     downloaded `actionlint` — clean on all of them.
+
+## Integrity & Licensing
+
+`ob-dump` was developed as an independent implementation for reading data stored in the ObjectBox format. It adheres to a "Clean Room Design" approach regarding binary software:
+- **No Reverse Engineering:** We have performed no decompilation, disassembly, or any other analysis of the closed-source `objectbox-c` binary.
+- **Open Specification:** Data parsing is based exclusively on public formats (LMDB and FlatBuffers) and the open-source code of the official schema generator ([`objectbox_generator`](https://github.com/objectbox/objectbox-dart/tree/main/generator), licensed under Apache 2.0).
+- **Model-Driven:** The decoding process is driven by the user-provided `objectbox-model.json` file, which is an open, user-accessible schema definition.
+
+This approach ensures full licensing integrity: `ob-dump` is an independent software project that contains no proprietary or misappropriated code, making it suitable for integration into projects with any licensing requirements.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
