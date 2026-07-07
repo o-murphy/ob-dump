@@ -18,6 +18,11 @@ const result = spawnSync(
   {
     stdio: "inherit",
     env: { ...process.env, LMDB_DATA_V1: "true" },
+    // Required on Windows: npm.cmd is a shell script wrapper, not a real
+    // executable — spawnSync fails with EINVAL trying to run it directly
+    // without a shell (confirmed via a real windows-latest CI run, not
+    // assumed). Harmless on POSIX, where npm is a real executable either way.
+    shell: true,
   },
 );
 
