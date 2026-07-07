@@ -31,6 +31,13 @@ Python3/make/C-compiler toolchain (or MSVC on Windows) is required —
 already the norm for this repo's `dart/` package too, which needs a C
 compiler for its own vendored-LMDB build step.
 
+**Not currently supported on Windows.** The same rebuild also needs
+`--enable_fast_api_calls=false` there (`lmdb`'s V8 "fast API calls" feature
+fails to link against some Node/MSVC combinations —
+`LNK2001 unresolved external symbol ... CFunctionInfo`), and neither the
+env var nor the CLI flag reliably suppressed it in CI — not chased further
+for now. Linux/macOS are unaffected and fully tested (see `.github/workflows/test.yml`).
+
 ## Workflow
 
 ```sh
