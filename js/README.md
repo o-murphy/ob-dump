@@ -18,6 +18,19 @@ core either. This is a deliberate toolkit split, not a missing feature: see
 the parent project's [`docs/BACKLOG.md`](../docs/BACKLOG.md#schema-export---schema-and---fbs)
 for the reasoning.
 
+## Requires a C/C++ build toolchain
+
+`lmdb`'s prebuilt binaries default to LMDB's newer data format v2, but
+ObjectBox (like this repo's own `dart/`/`py/` packages) writes the legacy
+data format v1 — opening a real ObjectBox `data.mdb` with a v2-expecting
+build is undefined behavior, confirmed empirically: it segfaults the whole
+Node process outright, not a catchable exception. This package's
+`postinstall` script (`scripts/postinstall.cjs`) rebuilds `lmdb` from
+source with `LMDB_DATA_V1=true` automatically on every install, so a
+Python3/make/C-compiler toolchain (or MSVC on Windows) is required —
+already the norm for this repo's `dart/` package too, which needs a C
+compiler for its own vendored-LMDB build step.
+
 ## Workflow
 
 ```sh

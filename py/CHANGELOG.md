@@ -10,6 +10,18 @@ picture across the other packages in this repo too.
 
 Version numbers are derived from git tags via `setuptools_scm`, not hand-bumped in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **README workflow example printed `b'...'` instead of a clean name** —
+  `flatc --python` string fields return raw `bytes`, not `str` (a
+  well-known FlatBuffers-Python quirk, not a `decode_flex()`/this
+  package's own doing); the example's `print(f"{ammo.Name()}: ...")` never
+  called `.decode('utf-8')`. Confirmed against a real ObjectBox database
+  (`ammo.Name()` printed `b'.338LM UKROP 250GR SMK'` instead of
+  `.338LM UKROP 250GR SMK`) before fixing.
+
 ## [0.1.0-alpha.2] - 2026-07-06
 
 ### Fixed
@@ -94,4 +106,5 @@ Version numbers are derived from git tags via `setuptools_scm`, not hand-bumped 
   `__init__.py` here holds real logic (not just re-exports), so excluding
   it from linting was hiding real issues (see the fixes above).
 
+[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...HEAD
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2
