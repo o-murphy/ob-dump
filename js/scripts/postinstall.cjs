@@ -17,7 +17,18 @@ const result = spawnSync(
   ["rebuild", "lmdb", "--build-from-source"],
   {
     stdio: "inherit",
-    env: { ...process.env, LMDB_DATA_V1: "true" },
+    env: {
+      ...process.env,
+      LMDB_DATA_V1: "true",
+      // V8's "fast API calls"/turbo mode links against a V8 ABI
+      // (`v8::CFunctionInfo`) that doesn't resolve against every Node
+      // build's node.lib — confirmed via a real windows-latest CI run
+      // (`LNK2001 unresolved external symbol ... CFunctionInfo`, `LNK1120`).
+      // Not needed for this package's usage (a handful of calls per
+      // process, not a hot loop), so just disable it outright rather than
+      // pin to specific known-good Node/MSVC versions.
+      ENABLE_FAST_API_CALLS: "false",
+    },
     // Required on Windows: npm.cmd is a shell script wrapper, not a real
     // executable — spawnSync fails with EINVAL trying to run it directly
     // without a shell (confirmed via a real windows-latest CI run, not
