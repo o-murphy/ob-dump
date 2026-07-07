@@ -5,3 +5,4 @@ build-*/
 *.a
 dist/
 ob-dump-*.tar.gz
+__pycache__/

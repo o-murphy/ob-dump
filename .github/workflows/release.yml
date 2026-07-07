@@ -13,9 +13,20 @@ env:
   RELEASE_TAG: ${{ github.ref_name }}
 
 jobs:
+  # Reuses .github/workflows/test.yml's own test-dart/test-py/test-flutter/
+  # test-js jobs (and its lighter, 3-OS-only build-cpp smoke build) via
+  # workflow_call — this job's own build-cpp below is a separate, heavier
+  # release-quality build (real per-arch runners, version-stamped, produces
+  # the artifacts actually attached to the GitHub Release), so it's kept
+  # distinct rather than folded into test.yml — the duplicate lightweight
+  # build-cpp run is accepted cost for not having two different reusable
+  # workflows to maintain.
+  run-tests:
+    uses: ./.github/workflows/test.yml
+
   # ── 1 + 5 (cpp half): build the CLI/shared-lib for every platform we
   # claim to support, run its test suite, package + upload artifacts. ──────
-  build-cpp:
+  build-cpp-release:
     strategy:
       fail-fast: false
       matrix:
@@ -58,37 +69,12 @@ jobs:
           name: ob-dump-${{ matrix.name }}
           path: ob-dump-${{ matrix.name }}.tar.gz
 
-  # ── 3 + 5 (dart half) ──────────────────────────────────────────────────
-  test-dart:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dart-lang/setup-dart@v1
-      - run: ./scripts/ci/test-dart.sh
-
-  # ── 4 + 5 (flutter half) ───────────────────────────────────────────────
-  test-flutter:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-      - run: ./scripts/ci/test-flutter.sh
-
-  test-python:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8.3.0
-      - run: ./scripts/ci/test-python.sh
-
   # Single guard job every build/test leg feeds into — downstream jobs
   # depend on this one instead of repeating the full leg list, so adding a
   # new language/platform leg later only means adding it here, not hunting
   # down every job's needs: list.
   tests-passed:
-    needs: [build-cpp, test-dart, test-flutter, test-python]
+    needs: [build-cpp-release, run-tests]
     runs-on: ubuntu-latest
     steps:
       - run: echo "All build/test legs passed."
@@ -119,18 +105,20 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Bump dart/pubspec.yaml and flutter/pubspec.yaml (lockstep)
+      - name: Bump dart/pubspec.yaml, flutter/pubspec.yaml, and js/package.json (lockstep)
         run: |
           VERSION="${{ steps.meta.outputs.version }}"
           sed -i "s/^version: .*/version: $VERSION/" dart/pubspec.yaml
           sed -i "s/^version: .*/version: $VERSION/" flutter/pubspec.yaml
+          sed -i "s/^  \"version\": \".*\"/  \"version\": \"$VERSION\"/" js/package.json
           grep '^version:' dart/pubspec.yaml flutter/pubspec.yaml
+          grep '"version":' js/package.json
 
       - name: Commit and push version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add dart/pubspec.yaml flutter/pubspec.yaml
+          git add dart/pubspec.yaml flutter/pubspec.yaml js/package.json
           git diff --cached --quiet || git commit -m "chore: bump version to ${{ steps.meta.outputs.version }}"
           git push origin main
 
@@ -241,11 +229,9 @@ jobs:
     needs: [publish-dart, bump-versions]
     runs-on: ubuntu-latest
     environment:
-      pub-publish-flutter # requires a "required reviewers"
-      # protection rule configured in this
-      # repo's Settings > Environments —
-      # not something a workflow file can
-      # set up by itself.
+      pub-publish-flutter # requires a deployment protection rule (wait timer / delay)
+      # configured in this repo's Settings > Environments —
+      # not something a workflow file can set up by itself.
     permissions:
       id-token: write # pub.dev OIDC trusted publisher
     defaults:

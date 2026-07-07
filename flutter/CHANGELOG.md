@@ -42,7 +42,7 @@ picture across the other packages in this repo too.
 - Re-exports [`ob_dump_reader`](dart)'s full API unchanged, depending on
   `flutter_lmdb2` instead of `dart_lmdb2` so Flutter's plugin tooling
   properly bundles the native LMDB library on Android/iOS/macOS (see the
-  `[Unreleased]` entry above for why that dependency was since dropped).
+  `0.1.0-alpha.2` entry above for why that dependency was since dropped).
 
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.0]: https://pub.dev/packages/ob_dump_reader_flutter/versions/0.1.0-alpha.0

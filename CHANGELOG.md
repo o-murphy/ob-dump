@@ -46,6 +46,22 @@ preparation for tagging it — but isn't real until the matching
 
 ## [Unreleased]
 
+### js/
+
+#### Added
+
+- Initial `ob-dump-reader` npm package — `readObjectboxRecords()`/
+  `readObjectboxToManyTargets()` walk an ObjectBox LMDB store directly via
+  [`lmdb`](https://www.npmjs.com/package/lmdb) (no FFI binding to this
+  repo's C++ core), same pattern as `dart/`/`py/`. Pair with `flatc --ts`
+  output generated from `ob_dump --fbs` to decode each record's raw
+  FlatBuffers bytes.
+- `decodeHelpers` (`decodeFlex()`, `bytesToHex()`, `bytesToUuidString()`,
+  `tryParseJsonString()`) — same `Flex`/`ExternalPropertyType` decode
+  helpers as `dart/`/`py/`, mirroring `ob-dump`'s own C++ decode exactly.
+- `ob-dump-reader` CLI (`js/src/cli.ts`) — prints each record's entity id,
+  object id, and raw FlatBuffers data length.
+
 ## [0.1.0-alpha.2] - 2026-07-06
 
 ### dart/
@@ -241,7 +257,7 @@ to reserve the package names — confirmed live via pub.dev's own API
 - Re-exports [`ob_dump_reader`](dart)'s full API unchanged, depending on
   `flutter_lmdb2` instead of `dart_lmdb2` so Flutter's plugin tooling
   properly bundles the native LMDB library on Android/iOS/macOS (see the
-  `[Unreleased]` entry above for why that dependency was since dropped).
+  `0.1.0-alpha.2` entry above for why that dependency was since dropped).
 
 [Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...HEAD
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2

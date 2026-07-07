@@ -5,6 +5,7 @@
 ![Dart Pub Version](https://img.shields.io/pub/v/ob_dump_reader?logo=dart)
 ![Flutter Pub Version](https://img.shields.io/pub/v/ob_dump_reader_flutter?logo=flutter)
 ![PyPI Version](https://img.shields.io/pypi/v/ob-dump-reader?logo=pypi)
+![npm Version](https://img.shields.io/npm/v/ob-dump-reader?logo=npm)
 
 
 Reads an [ObjectBox](https://objectbox.io/) LMDB store (`data.mdb`) directly
@@ -29,6 +30,7 @@ database.
   - [C API](#c-api)
   - [Dart](#dart)
   - [Python](#python)
+  - [JavaScript/TypeScript](#javascripttypescript)
   - [Building your own reader in another language](#building-your-own-reader-in-another-language)
   - [Scope](#scope)
   - [Integrity \& Licensing](#integrity--licensing)
@@ -148,18 +150,28 @@ handling. Also ships an `async`/`await` variant (`ob_dump_reader.aio`,
 built on py-lmdb's own executor-based async wrapper). See its own README
 for the full workflow.
 
+## JavaScript/TypeScript
+
+[`js/`](js) is a separate, standalone npm package
+([`ob-dump-reader`](js/README.md)) for reading an ObjectBox database
+directly from Node.js, via [`lmdb`](https://www.npmjs.com/package/lmdb) —
+same pattern as `dart/`/`py/`: no FFI/native-addon binding to this C++ core,
+just an LMDB binding for the language plus this project's own key-format/
+`ToMany` handling. See its own README for the full workflow.
+
 ## Building your own reader in another language
 
-[`dart/`](dart) and [`py/`](py) (see above) are worked examples of a
-pattern that doesn't need any FFI binding to this C++ core at all, as long
-as *some* LMDB binding exists for your language (common — LMDB is a
-popular embedded store):
+[`dart/`](dart), [`py/`](py), and [`js/`](js) (see above) are worked
+examples of a pattern that doesn't need any FFI binding to this C++ core at
+all, as long as *some* LMDB binding exists for your language (common — LMDB
+is a popular embedded store):
 
 1. **Get an LMDB binding for your language.** `dart/` (see above) vendors
    and builds LMDB itself rather than depending on a third-party binding
    package — see `docs/BACKLOG.md` item 22 for why (a real AOT-compiled-build
    bug found in the binding package it used to depend on). `py/` uses
-   [`py-lmdb`](https://github.com/jnwatson/py-lmdb) directly — mature and
+   [`py-lmdb`](https://github.com/jnwatson/py-lmdb) and `js/` uses
+   [`lmdb`](https://www.npmjs.com/package/lmdb) directly — both mature and
    actively maintained, so no equivalent reason to vendor there. For other
    languages: the `lmdb` crate for Rust, `lmdbjava` for the JVM.
 2. **Generate the schema artifacts from this project:**
@@ -181,10 +193,10 @@ popular embedded store):
    entry), the value is one record's raw FlatBuffers table bytes, and:
    - `entity_id = key[3] / 4`
    - `object_id = key[4..7]` as a big-endian uint32
-   `dart/lib/ob_dump_reader.dart` and `py/src/ob_dump_reader/__init__.py`
-   are both complete, working reference implementations of exactly this
-   (each well under 100 lines) — port whichever's closer to your target
-   language rather than starting from scratch.
+   `dart/lib/ob_dump_reader.dart`, `py/src/ob_dump_reader/__init__.py`, and
+   `js/src/index.ts` are all complete, working reference implementations of
+   exactly this (each well under 100 lines) — port whichever's closer to
+   your target language rather than starting from scratch.
 5. Dispatch on `entity_id` (via `schema.json`) to pick the right
    `flatc`-generated type, decode, and do whatever you need with the result
    (insert into a new database, etc).
