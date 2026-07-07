@@ -1,0 +1,4 @@
+export const KEY_TYPE_DATA = 0x18;
+export const KEY_TYPE_RELATION = 0x08;
+export const RELATION_DIRECTION_FORWARD = 0;
+export const RELATION_DIRECTION_BACKWARD = 2;

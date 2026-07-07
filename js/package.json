@@ -1,0 +1,52 @@
+{
+  "name": "ob-dump-reader",
+  "version": "0.1.0-alpha.2",
+  "description": "Minimal ObjectBox LMDB reader toolkit for JavaScript/TypeScript",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "scripts/postinstall.cjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "ob-dump-reader": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "postinstall": "node scripts/postinstall.cjs"
+  },
+  "keywords": [
+    "objectbox",
+    "lmdb",
+    "flatbuffers"
+  ],
+  "homepage": "https://github.com/o-murphy/ob-dump",
+  "bugs": "https://github.com/o-murphy/ob-dump/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/o-murphy/ob-dump"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "flatbuffers": "^25.2.10",
+    "lmdb": "^3.5.6"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  }
+}

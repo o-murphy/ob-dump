@@ -46,6 +46,51 @@ preparation for tagging it — but isn't real until the matching
 
 ## [Unreleased]
 
+### py/
+
+#### Fixed
+
+- **README workflow example printed `b'...'` instead of a clean name** —
+  `flatc --python` string fields return raw `bytes`, not `str` (a
+  well-known FlatBuffers-Python quirk, not a `decode_flex()`/this
+  package's own doing); the example's `print(f"{ammo.Name()}: ...")` never
+  called `.decode('utf-8')`. Confirmed against a real ObjectBox database
+  (`ammo.Name()` printed `b'.338LM UKROP 250GR SMK'` instead of
+  `.338LM UKROP 250GR SMK`) before fixing.
+
+### js/
+
+#### Added
+
+- Initial `ob-dump-reader` npm package — `readObjectboxRecords()`/
+  `readObjectboxToManyTargets()` walk an ObjectBox LMDB store directly via
+  [`lmdb`](https://www.npmjs.com/package/lmdb) (no FFI binding to this
+  repo's C++ core), same pattern as `dart/`/`py/`. Pair with `flatc --ts`
+  output generated from `ob_dump --fbs` to decode each record's raw
+  FlatBuffers bytes.
+- `decodeHelpers` (`decodeFlex()`, `bytesToHex()`, `bytesToUuidString()`,
+  `tryParseJsonString()`) — same `Flex`/`ExternalPropertyType` decode
+  helpers as `dart/`/`py/`, mirroring `ob-dump`'s own C++ decode exactly.
+- `ob-dump-reader` CLI (`js/src/cli.ts`) — prints each record's entity id,
+  object id, and raw FlatBuffers data length.
+- `postinstall` script (`js/scripts/postinstall.cjs`) rebuilds `lmdb` from
+  source with `LMDB_DATA_V1=true`, required to read real ObjectBox
+  databases at all: `lmdb`'s prebuilt binaries default to LMDB's newer
+  data format v2, while ObjectBox (like this repo's own `dart/`/`py/`
+  packages) writes the legacy data format v1 — opening a real ObjectBox
+  `data.mdb` with a v2-expecting build segfaults the whole Node process
+  outright, not a catchable exception (confirmed against a real
+  ObjectBox-produced database, not assumed). Requires a C/C++ build
+  toolchain on install, same as this repo's own `dart/` package already
+  needs for its vendored-LMDB build step.
+- `lmdb`'s own `noSubdir` file-vs-directory auto-detection guesses from
+  whether the path contains a "." — wrong for ObjectBox data directories
+  with a dot in their name (e.g. a reverse-DNS app-data directory like
+  `com.example.app/`); `openStore()` now always passes `noSubdir: false`
+  explicitly, confirmed against a real such directory (without it, `open()`
+  tried to open the directory itself as the data file and failed with
+  `EISDIR`).
+
 ## [0.1.0-alpha.2] - 2026-07-06
 
 ### dart/
@@ -241,7 +286,7 @@ to reserve the package names — confirmed live via pub.dev's own API
 - Re-exports [`ob_dump_reader`](dart)'s full API unchanged, depending on
   `flutter_lmdb2` instead of `dart_lmdb2` so Flutter's plugin tooling
   properly bundles the native LMDB library on Android/iOS/macOS (see the
-  `[Unreleased]` entry above for why that dependency was since dropped).
+  `0.1.0-alpha.2` entry above for why that dependency was since dropped).
 
 [Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...HEAD
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2

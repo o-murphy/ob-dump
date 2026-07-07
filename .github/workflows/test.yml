@@ -1,0 +1,101 @@
+name: Test all packages
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+
+jobs:
+  test-dart:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dart-lang/setup-dart@v1
+
+      - run: ./scripts/ci/test-dart.sh
+        shell: bash
+
+  test-flutter:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: ./scripts/ci/test-flutter.sh
+        shell: bash
+
+  test-py:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v8.3.0
+
+      - run: ./scripts/ci/test-python.sh
+        shell: bash
+
+  test-js:
+    strategy:
+      fail-fast: false
+      matrix:
+        # No windows-latest: the postinstall rebuild (needed to read real
+        # ObjectBox databases — see js/README.md) hits an MSVC link error
+        # building lmdb's V8 fast-api-calls feature (`LNK2001 unresolved
+        # external symbol ... CFunctionInfo`) that neither env vars nor
+        # --enable_fast_api_calls=false reliably suppress there; not chasing
+        # this further for now, see js/README.md's own Windows note.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: ./scripts/ci/test-js.sh
+        shell: bash
+
+  build-cpp:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # -C Release is a no-op on single-config generators (Linux/macOS
+      # Makefiles) and required on Windows' multi-config Visual Studio
+      # generator.
+      - name: Build + test
+        shell: bash
+        run: ./scripts/ci/build-cpp.sh
+
+      - name: Package
+        shell: bash
+        run: ./scripts/ci/package-cpp.sh ${{ matrix.os }}
+
+      # Named "ci-build-cpp-*", not "ob-dump-*" — this workflow also runs as
+      # a workflow_call from release.yml, sharing that run's artifact
+      # namespace with the release's own, version-stamped build-cpp job;
+      # release.yml's create-release step downloads everything matching
+      # "ob-dump-*" to attach to the GitHub Release, so this smoke-test
+      # build must not collide with that pattern.
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-build-cpp-${{ matrix.os }}
+          path: ob-dump-${{ matrix.os }}.tar.gz

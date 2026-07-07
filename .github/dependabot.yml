@@ -1,6 +1,5 @@
 version: 2
 updates:
-
   # ob-dump-reader's dependencies (flatbuffers, lmdb) and dev dependencies
   # (orjson, pytest, ruff). "uv" (not "pip") since this package is managed
   # via uv.lock — "pip" doesn't understand that lockfile format, only
@@ -13,6 +12,17 @@ updates:
       interval: "weekly"
     groups:
       python-dependencies:
+        patterns:
+          - "*"
+
+  # js/ob-dump-reader's dependencies (flatbuffers, lmdb) and dev dependencies
+  # (typescript, vitest, @types/node).
+  - package-ecosystem: "npm"
+    directory: "js/"
+    schedule:
+      interval: "weekly"
+    groups:
+      js-dependencies:
         patterns:
           - "*"
 

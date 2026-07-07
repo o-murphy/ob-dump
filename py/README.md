@@ -42,7 +42,11 @@ AMMO_ENTITY_ID = 1  # from schema.json
 def on_record(record: ob.ObRecord) -> None:
     if record.entity_id == AMMO_ENTITY_ID:
         ammo = Ammo.GetRootAs(record.data)  # flatc-generated class decodes the bytes
-        print(f"{ammo.Name()}: {ammo.BcG1()}")
+        # flatc --python string fields return raw bytes, not str — decode()
+        # is on you, same as any other flatc-python output (confirmed
+        # against a real database: printing ammo.Name() directly gives
+        # b'...', not a clean string).
+        print(f"{ammo.Name().decode('utf-8')}: {ammo.BcG1()}")
         # ... insert into whatever your new database is.
 
 
