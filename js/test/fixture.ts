@@ -12,6 +12,9 @@ export function writeFixture(
     encoding: "binary",
     keyEncoding: "binary",
     mapSize: 10 * 1024 * 1024,
+    // See src/index.ts's openStore for why this can't be left to lmdb-js's
+    // own path-based guess.
+    noSubdir: false,
   });
   for (const [key, value] of entries) {
     db.putSync(key, value);

@@ -13,11 +13,6 @@ export interface ObRecord {
   data: Buffer;
 }
 
-// readOnly/keyEncoding/getRange(start:) option names are per lmdb-js's
-// published API — authored without network access to the registry in this
-// sandbox, so verify against the installed package's own type defs
-// (`yarn install` then check `node_modules/lmdb/index.d.ts`) before relying
-// on this in production.
 function openStore(objectboxDir: string) {
   return open({
     path: objectboxDir,
@@ -25,6 +20,15 @@ function openStore(objectboxDir: string) {
     keyEncoding: "binary",
     readOnly: true,
     mapSize: 512 * 1024 * 1024,
+    // lmdb-js's own default for `noSubdir` guesses file-vs-directory mode
+    // from whether `path` contains a "." — wrong for any ObjectBox data
+    // dir with a dot in its name (e.g. a reverse-DNS app-data directory
+    // like `com.example.app/`, confirmed against a real one: without this,
+    // `open()` tried to open the directory itself as the data file and
+    // failed with EISDIR). ObjectBox always stores `data.mdb`/`lock.mdb`
+    // in a real subdirectory, never single-file mode, so this is never
+    // conditional.
+    noSubdir: false,
   });
 }
 
