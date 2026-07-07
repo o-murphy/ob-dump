@@ -14,7 +14,19 @@ const { spawnSync } = require("node:child_process");
 
 const result = spawnSync(
   process.platform === "win32" ? "npm.cmd" : "npm",
-  ["rebuild", "lmdb", "--build-from-source"],
+  [
+    "rebuild",
+    "lmdb",
+    "--build-from-source",
+    // Same two switches as the env vars below, passed as lmdb's own
+    // README-documented `npm install`-style flags too — belt and
+    // suspenders, since it's unconfirmed whether `npm rebuild`
+    // (vs `npm install`) reliably threads custom env vars all the way
+    // through node-gyp-build-optional-packages -> node-gyp -> gyp's own
+    // `<!(echo ...)` shell-out on every platform.
+    "--use_data_v1=true",
+    "--enable_fast_api_calls=false",
+  ],
   {
     stdio: "inherit",
     env: {
