@@ -23,15 +23,19 @@ jobs:
           # All native builds — no cross-compilation/QEMU involved. Runner
           # labels confirmed current via actions/runner-images' own README
           # (ubuntu-24.04-arm and windows-11-arm are GA, not preview).
-          - { os: ubuntu-latest,    name: linux-x64 }
+          - { os: ubuntu-latest, name: linux-x64 }
           - { os: ubuntu-24.04-arm, name: linux-arm64 }
-          - { os: windows-latest,   name: windows-x64 }
-          - { os: windows-11-arm,   name: windows-arm64 }
+          - { os: windows-latest, name: windows-x64 }
+          - { os: windows-11-arm, name: windows-arm64 }
           # Universal binary (both archs in one file via Xcode/clang +
           # lipo) rather than two separate macOS legs. Quoted so the
           # embedded ";" survives substitution into the shell command below
           # instead of bash reading it as a command separator.
-          - { os: macos-latest,     name: macos-universal, cmake_extra: '-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"' }
+          - {
+              os: macos-latest,
+              name: macos-universal,
+              cmake_extra: '-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"',
+            }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -191,8 +195,9 @@ jobs:
     needs: [bump-versions, create-release]
     runs-on: ubuntu-latest
     permissions:
-      id-token: write  # pub.dev OIDC trusted publisher — configure this
-                       # package for trusted publishing on pub.dev first.
+      id-token:
+        write # pub.dev OIDC trusted publisher — configure this
+        # package for trusted publishing on pub.dev first.
     defaults:
       run:
         working-directory: dart
@@ -214,6 +219,13 @@ jobs:
         working-directory: .
         run: python3 scripts/ci/sync_changelogs.py dart
 
+      - name: Make git tree locally clean
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "ci: local-only commit so pub publish sees a clean tree (never pushed)"
+
       - run: dart pub publish --dry-run
       - name: Publish to pub.dev
         run: dart pub publish --force
@@ -228,13 +240,14 @@ jobs:
     # and this job needs its version output below.
     needs: [publish-dart, bump-versions]
     runs-on: ubuntu-latest
-    environment: pub-publish-flutter  # requires a "required reviewers"
-                                       # protection rule configured in this
-                                       # repo's Settings > Environments —
-                                       # not something a workflow file can
-                                       # set up by itself.
+    environment:
+      pub-publish-flutter # requires a "required reviewers"
+      # protection rule configured in this
+      # repo's Settings > Environments —
+      # not something a workflow file can
+      # set up by itself.
     permissions:
-      id-token: write  # pub.dev OIDC trusted publisher
+      id-token: write # pub.dev OIDC trusted publisher
     defaults:
       run:
         working-directory: flutter
@@ -274,6 +287,13 @@ jobs:
         working-directory: .
         run: python3 scripts/ci/sync_changelogs.py flutter
 
+      - name: Make git tree locally clean
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "ci: local-only commit so pub publish sees a clean tree (never pushed)"
+
       - name: flutter pub publish --dry-run
         run: flutter pub publish --dry-run
       - name: Publish to pub.dev
@@ -284,21 +304,24 @@ jobs:
     needs: [bump-versions, create-release]
     runs-on: ubuntu-latest
     permissions:
-      id-token: write  # PyPI trusted publishing — configure this package
-                       # for trusted publishing on PyPI first.
+      id-token:
+        write # PyPI trusted publishing — configure this package
+        # for trusted publishing on PyPI first.
 
     environment:
-      name: pypi  # requires a "required reviewers" protection rule
-                  # configured in this repo's Settings > Environments —
-                  # not something a workflow file can set up by itself.
+      name:
+        pypi # requires a "required reviewers" protection rule
+        # configured in this repo's Settings > Environments —
+        # not something a workflow file can set up by itself.
 
     defaults:
       run:
-        working-directory: py  # missing entirely before — every uv command
-                                # below failed immediately with "No
-                                # pyproject.toml found" since this job never
-                                # actually ran (caught by trying `uv sync`
-                                # from the repo root locally, not assumed).
+        working-directory:
+          py # missing entirely before — every uv command
+          # below failed immediately with "No
+          # pyproject.toml found" since this job never
+          # actually ran (caught by trying `uv sync`
+          # from the repo root locally, not assumed).
 
     steps:
       # fetch-depth: 0 AND fetch-tags: true — setuptools_scm derives the
