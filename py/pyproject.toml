@@ -60,8 +60,4 @@ exclude = [
 ]
 
 [dependency-groups]
-dev = [
-    "orjson>=3.11.8",
-    "pytest>=9.0.3",
-    "ruff>=0.12.11",
-]
+dev = ["orjson>=3.11.8", "pytest>=9.0.3", "ruff>=0.12.11"]
