@@ -1,6 +1,6 @@
 name: ob_dump_reader_flutter
 description: "Flutter-ready ObjectBox LMDB reader toolkit"
-version: 0.1.0-alpha.2
+version: 0.1.0-beta.1
 homepage: https://github.com/o-murphy/ob-dump
 environment:
   sdk: '>=3.5.0 <4.0.0'
@@ -12,7 +12,7 @@ dependencies:
   # published package actually resolves. Kept in lockstep with
   # dart/pubspec.yaml's `version:` (.github/workflows/version-parity.yml
   # checks both, plus this line, on every push/PR).
-  ob_dump_reader: ^0.1.0-alpha.2
+  ob_dump_reader: ^0.1.0-beta.1
 
 # Local/CI dev always builds against this monorepo's own dart/ package
 # instead of whatever's on pub.dev. dependency_overrides is never seen by

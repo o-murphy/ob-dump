@@ -1202,6 +1202,62 @@ decoder's output exactly.
 
     If a real `flutter analyze`/`flutter pub publish --dry-run` run ever
     contradicts either point above, that's the first thing to check.
+26. **`release.yml` has no `publish-js` job yet — intentional, not an
+    oversight.** `js/` (`ob-dump-reader` on npm) was added to the repo
+    with no corresponding publish job. npm's trusted-publisher OIDC flow
+    needs the package to already exist on the registry with a trusted
+    publisher configured in its settings — unlike PyPI's "pending
+    publisher" feature, there's no way to pre-authorize a name that's
+    never been published — so CI can't be the one to do the very first
+    `npm publish` for `ob-dump-reader`. That has to happen by hand, once,
+    from a maintainer's own npm login, before a `publish-js` job has
+    anything to attach trusted publishing to.
+
+    Once that manual first publish has happened and npmjs.com's package
+    settings has a trusted publisher pointing at this repo's `release.yml`,
+    add a job matching the one `o-murphy/a7p`'s own `release.yml` already
+    uses for the same situation (its `a7p-js` npm package):
+    ```yaml
+    publish-js:
+      needs: [bump-versions, create-release]
+      runs-on: ubuntu-latest
+      environment: npmjs
+      permissions:
+        id-token: write # npm OIDC trusted publishing (provenance)
+      defaults:
+        run:
+          working-directory: js
+      steps:
+        - uses: actions/checkout@v7
+          with:
+            ref: main
+        - uses: actions/setup-node@v7
+          with:
+            node-version: "24"
+            registry-url: https://registry.npmjs.org/
+        - run: yarn install --frozen-lockfile
+        - run: yarn build
+        - name: Use OIDC auth
+          run: npm config delete //registry.npmjs.org/:_authToken
+        - name: Publish to npm
+          run: |
+            VERSION="${{ needs.bump-versions.outputs.version }}"
+            if [ "${{ needs.bump-versions.outputs.prerelease }}" = "true" ]; then
+              DIST_TAG=$(echo "$VERSION" | grep -oE '(alpha|beta|rc|pre)' | head -1)
+              npm publish --provenance --tag "${DIST_TAG:-prerelease}"
+            else
+              npm publish --provenance
+            fi
+    ```
+    The `npm config delete //registry.npmjs.org/:_authToken` step matters:
+    `actions/setup-node`'s `registry-url` input writes a placeholder
+    `NODE_AUTH_TOKEN`-based auth entry to `.npmrc` that `npm publish` would
+    otherwise try first; deleting it is what makes `npm publish` fall back
+    to the OIDC trusted-publisher exchange instead (per `a7p`'s own working
+    setup, not guessed). Same `environment:` gate pattern as
+    `pub-publish-dart`/`pub-publish-flutter`/`pypi` above — configure
+    protection rules for it in this repo's Settings > Environments once
+    the environment exists.
 
 ## Integrity & Licensing
 

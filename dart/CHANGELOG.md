@@ -8,6 +8,13 @@ Generated from the repo root's `CHANGELOG.md` at publish time — see that
 file if you're reading this in the published package and want the full
 picture across the other packages in this repo too.
 
+## [0.1.0-beta.1] - 2026-07-22
+
+### Changed
+
+- Version bump only — republished in lockstep with `flutter`/`py` (see
+  the intro above), no functional changes.
+
 ## [0.1.0-alpha.2] - 2026-07-06
 
 ### Added
@@ -77,5 +84,6 @@ picture across the other packages in this repo too.
   FlatBuffers/schema knowledge; pair with `flatc --dart` output generated
   from `ob_dump --fbs` (see the parent [`ob-dump`](.) project).
 
+[0.1.0-beta.1]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...v0.1.0-beta.1
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.0]: https://pub.dev/packages/ob_dump_reader/versions/0.1.0-alpha.0
