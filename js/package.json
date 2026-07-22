@@ -1,6 +1,6 @@
 {
   "name": "ob-dump-reader",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-beta.1",
   "description": "Minimal ObjectBox LMDB reader toolkit for JavaScript/TypeScript",
   "license": "MIT",
   "type": "module",

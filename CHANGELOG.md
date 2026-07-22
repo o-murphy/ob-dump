@@ -39,24 +39,37 @@ published the wrong version before any package registry actually received
 new content under that version (generated-`CHANGELOG.md`-vs-`.gitignore`,
 `pubspec.yaml` description-length, and `fetch-tags`/`setuptools_scm`
 bugs — all since fixed, see `docs/BACKLOG.md` item 24) — so it's skipped
-entirely rather than reused. `0.1.0-alpha.2` is the next planned release —
-`dart/pubspec.yaml`/`flutter/pubspec.yaml` are already bumped to match, in
-preparation for tagging it — but isn't real until the matching
-`v0.1.0-alpha.2` tag is actually pushed and `release.yml` runs clean.
+entirely rather than reused. `0.1.0-alpha.2` is the first release that
+actually shipped through `release.yml`: `dart`/`py` published clean on the
+first run; `flutter`'s `pub publish --dry-run` failed that same run on a
+"1 checked-in file is modified in git" warning (the ephemeral
+`pubspec.yaml`/`CHANGELOG.md` rewrites dirtied the tree pub.dev's
+validator checks) and was published separately once that was fixed —
+confirmed against pub.dev's/PyPI's own API (`ob_dump_reader` and
+`ob_dump_reader_flutter` both show a real `0.1.0-alpha.2` version with a
+publish timestamp; PyPI shows `0.1.0a2`), not assumed from the workflow
+run's green checkmark alone. `js/` didn't exist yet at that point. Both
+root causes of the `flutter` failure are now fixed on `main`: the
+ephemeral `pubspec.yaml` rewrite is gone entirely (real checked-in
+`dependency_overrides`, see `docs/BACKLOG.md` item 25), and `publish-dart`/
+`publish-flutter` each locally commit (never pushed) any
+`sync_changelogs.py` drift before `pub publish` runs, so the tree it sees
+is always clean.
+
+`0.1.0-beta.1` is the next planned release: `py/`'s `decode_flex()`-crash-
+adjacent README fix below is the only real code change, but `dart/`/
+`flutter/` still bump and republish in lockstep per this repo's one-
+version-covers-everything convention (see above). `js/` is deliberately
+**not** part of this release despite already having content in
+`[Unreleased]` below — npm's trusted-publisher OIDC flow (unlike PyPI's
+"pending publisher" support for brand-new projects) requires the package
+to already exist on the registry, so `ob-dump-reader` needs one manual
+`npm publish` first to reserve the name before a CI `publish-js` job can
+use it. See `docs/BACKLOG.md` item 26 for the reserved job recipe
+(borrowed from `o-murphy/a7p`'s own `release.yml`, which already does
+this) to add once that's done.
 
 ## [Unreleased]
-
-### py/
-
-#### Fixed
-
-- **README workflow example printed `b'...'` instead of a clean name** —
-  `flatc --python` string fields return raw `bytes`, not `str` (a
-  well-known FlatBuffers-Python quirk, not a `decode_flex()`/this
-  package's own doing); the example's `print(f"{ammo.Name()}: ...")` never
-  called `.decode('utf-8')`. Confirmed against a real ObjectBox database
-  (`ammo.Name()` printed `b'.338LM UKROP 250GR SMK'` instead of
-  `.338LM UKROP 250GR SMK`) before fixing.
 
 ### js/
 
@@ -90,6 +103,46 @@ preparation for tagging it — but isn't real until the matching
   explicitly, confirmed against a real such directory (without it, `open()`
   tried to open the directory itself as the data file and failed with
   `EISDIR`).
+
+## [0.1.0-beta.1] - 2026-07-22
+
+### dart/
+
+#### Changed
+
+- Version bump only — republished in lockstep with `flutter`/`py` (see
+  the intro above), no functional changes.
+
+### flutter/
+
+#### Changed
+
+- **`dependencies.ob_dump_reader` is now a real, checked-in `^X.Y.Z`
+  constraint** (kept in lockstep with `dart/pubspec.yaml`'s `version:`,
+  enforced by `.github/workflows/version-parity.yml`), with the local
+  monorepo path dep moved to `dependency_overrides.ob_dump_reader`
+  instead. Previously this was a bare `path: ../dart` under
+  `dependencies` plus a `publish_to: none` — required because a plain
+  path dependency there isn't publishable (`flutter analyze` fails on
+  `invalid_dependency` without it) — which meant `publish-flutter` had to
+  ephemerally rewrite `pubspec.yaml` (`pub remove`/`pub add` + strip
+  `publish_to: none`) right before `pub publish`, in the release
+  checkout only. `dependency_overrides` is never inspected by the
+  analyzer's path-dependency check and has zero effect on what a
+  consumer of the published package resolves, so nothing needs that
+  rewrite anymore. See `docs/BACKLOG.md` item 25.
+
+### py/
+
+#### Fixed
+
+- **README workflow example printed `b'...'` instead of a clean name** —
+  `flatc --python` string fields return raw `bytes`, not `str` (a
+  well-known FlatBuffers-Python quirk, not a `decode_flex()`/this
+  package's own doing); the example's `print(f"{ammo.Name()}: ...")` never
+  called `.decode('utf-8')`. Confirmed against a real ObjectBox database
+  (`ammo.Name()` printed `b'.338LM UKROP 250GR SMK'` instead of
+  `.338LM UKROP 250GR SMK`) before fixing.
 
 ## [0.1.0-alpha.2] - 2026-07-06
 
@@ -288,5 +341,6 @@ to reserve the package names — confirmed live via pub.dev's own API
   properly bundles the native LMDB library on Android/iOS/macOS (see the
   `0.1.0-alpha.2` entry above for why that dependency was since dropped).
 
-[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...HEAD
+[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.1...HEAD
+[0.1.0-beta.1]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...v0.1.0-beta.1
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2

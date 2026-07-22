@@ -1155,6 +1155,109 @@ decoder's output exactly.
       upward, never into subdirectories. Fixed by adding the same
       `defaults: run: working-directory: py` the other two publish jobs
       already had.
+25. **`flutter/pubspec.yaml` switched from a plain `path:` dep to
+    `dependency_overrides` — done, avoids CI patching it.** Previously,
+    `flutter/pubspec.yaml`'s committed `dependencies.ob_dump_reader` was a
+    bare `path: ../dart`, plus a `publish_to: none` needed because a plain
+    path dependency there isn't publishable (`flutter analyze` fails,
+    exit 1, on `invalid_dependency`). `publish-flutter` worked around both
+    ephemerally, right before `pub publish`, in the checkout only: `flutter
+    pub remove ob_dump_reader && flutter pub add "ob_dump_reader@^$VERSION"`
+    then a `sed` to drop `publish_to: none` — never committed back, so
+    every other CI job (`test-flutter.sh`, `flutter analyze` on PRs) still
+    saw the raw path dep, and there was a whole ephemeral-rewrite step to
+    trust at release time.
+
+    Restructured instead: `dependencies.ob_dump_reader` is now a real,
+    checked-in `^X.Y.Z` constraint (kept in lockstep with
+    `dart/pubspec.yaml`'s `version:`, same as `flutter/pubspec.yaml`'s own
+    `version:` already was — see item 18), and the local path dep moved to
+    a checked-in `dependency_overrides.ob_dump_reader: {path: ../dart}`.
+    `bump-versions` now bumps that dependency line alongside both
+    `version:` fields (one more `sed`, same lockstep pattern), and
+    `version-parity.yml` gained a second check enforcing it never drifts.
+    `publish-flutter` no longer touches `pubspec.yaml` at all — no `pub
+    remove`/`pub add`, no `publish_to: none` (removed from the file
+    entirely, nothing left to strip).
+
+    This relies on two things read directly from source rather than run
+    locally (no Flutter/Dart SDK available in the environment this was
+    done in, so **not empirically confirmed the way item 19's real CI runs
+    were** — flagging that explicitly rather than claiming otherwise):
+    - The analyzer's `invalid_dependency` check
+      (`pkg/analyzer/lib/src/pubspec/validators/dependency_validator.dart`
+      in `dart-lang/sdk`) only walks `dependencies`/`dev_dependencies`;
+      `dependency_overrides` is never passed to `validatePathEntries`. So
+      moving the path dep there, with a real constraint under
+      `dependencies`, should make `isPublishablePackage` stay true without
+      tripping the path-dependency error — i.e. `publish_to: none` is no
+      longer needed for `flutter analyze` to pass.
+    - `dart-lang/pub`'s own `DependencyOverrideValidator`
+      (`lib/src/validator/dependency_override.dart`) only ever adds a
+      *hint* when a non-dev dependency is overridden — not a warning or
+      error — so it doesn't block `pub publish` or need `--force` to get
+      past, and `dependency_overrides` is never transitive (only applies
+      when the declaring package is the resolution root), so it has zero
+      effect on anyone installing the published `ob_dump_reader_flutter`.
+
+    If a real `flutter analyze`/`flutter pub publish --dry-run` run ever
+    contradicts either point above, that's the first thing to check.
+26. **`release.yml` has no `publish-js` job yet — intentional, not an
+    oversight.** `js/` (`ob-dump-reader` on npm) was added to the repo
+    with no corresponding publish job. npm's trusted-publisher OIDC flow
+    needs the package to already exist on the registry with a trusted
+    publisher configured in its settings — unlike PyPI's "pending
+    publisher" feature, there's no way to pre-authorize a name that's
+    never been published — so CI can't be the one to do the very first
+    `npm publish` for `ob-dump-reader`. That has to happen by hand, once,
+    from a maintainer's own npm login, before a `publish-js` job has
+    anything to attach trusted publishing to.
+
+    Once that manual first publish has happened and npmjs.com's package
+    settings has a trusted publisher pointing at this repo's `release.yml`,
+    add a job matching the one `o-murphy/a7p`'s own `release.yml` already
+    uses for the same situation (its `a7p-js` npm package):
+    ```yaml
+    publish-js:
+      needs: [bump-versions, create-release]
+      runs-on: ubuntu-latest
+      environment: npmjs
+      permissions:
+        id-token: write # npm OIDC trusted publishing (provenance)
+      defaults:
+        run:
+          working-directory: js
+      steps:
+        - uses: actions/checkout@v7
+          with:
+            ref: main
+        - uses: actions/setup-node@v7
+          with:
+            node-version: "24"
+            registry-url: https://registry.npmjs.org/
+        - run: yarn install --frozen-lockfile
+        - run: yarn build
+        - name: Use OIDC auth
+          run: npm config delete //registry.npmjs.org/:_authToken
+        - name: Publish to npm
+          run: |
+            VERSION="${{ needs.bump-versions.outputs.version }}"
+            if [ "${{ needs.bump-versions.outputs.prerelease }}" = "true" ]; then
+              DIST_TAG=$(echo "$VERSION" | grep -oE '(alpha|beta|rc|pre)' | head -1)
+              npm publish --provenance --tag "${DIST_TAG:-prerelease}"
+            else
+              npm publish --provenance
+            fi
+    ```
+    The `npm config delete //registry.npmjs.org/:_authToken` step matters:
+    `actions/setup-node`'s `registry-url` input writes a placeholder
+    `NODE_AUTH_TOKEN`-based auth entry to `.npmrc` that `npm publish` would
+    otherwise try first; deleting it is what makes `npm publish` fall back
+    to the OIDC trusted-publisher exchange instead (per `a7p`'s own working
+    setup, not guessed). Same `environment:` gate pattern as
+    `pub-publish-dart`/`pub-publish-flutter`/`pypi` above — configure
+    protection rules for it in this repo's Settings > Environments once
+    the environment exists.
 
 ## Integrity & Licensing
 

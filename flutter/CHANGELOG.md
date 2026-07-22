@@ -8,6 +8,25 @@ Generated from the repo root's `CHANGELOG.md` at publish time — see that
 file if you're reading this in the published package and want the full
 picture across the other packages in this repo too.
 
+## [0.1.0-beta.1] - 2026-07-22
+
+### Changed
+
+- **`dependencies.ob_dump_reader` is now a real, checked-in `^X.Y.Z`
+  constraint** (kept in lockstep with `dart/pubspec.yaml`'s `version:`,
+  enforced by `.github/workflows/version-parity.yml`), with the local
+  monorepo path dep moved to `dependency_overrides.ob_dump_reader`
+  instead. Previously this was a bare `path: ../dart` under
+  `dependencies` plus a `publish_to: none` — required because a plain
+  path dependency there isn't publishable (`flutter analyze` fails on
+  `invalid_dependency` without it) — which meant `publish-flutter` had to
+  ephemerally rewrite `pubspec.yaml` (`pub remove`/`pub add` + strip
+  `publish_to: none`) right before `pub publish`, in the release
+  checkout only. `dependency_overrides` is never inspected by the
+  analyzer's path-dependency check and has zero effect on what a
+  consumer of the published package resolves, so nothing needs that
+  rewrite anymore. See `docs/BACKLOG.md` item 25.
+
 ## [0.1.0-alpha.2] - 2026-07-06
 
 ### Changed
@@ -44,5 +63,6 @@ picture across the other packages in this repo too.
   properly bundles the native LMDB library on Android/iOS/macOS (see the
   `0.1.0-alpha.2` entry above for why that dependency was since dropped).
 
+[0.1.0-beta.1]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...v0.1.0-beta.1
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.0]: https://pub.dev/packages/ob_dump_reader_flutter/versions/0.1.0-alpha.0
