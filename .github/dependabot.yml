@@ -35,20 +35,33 @@ updates:
     schedule:
       interval: "weekly"
     groups:
+      dart-dependencies:
+        patterns:
+          - "*"
+
+  # flutter/ob_dump_reader_flutter's real dependencies: the `flutter` SDK
+  # itself (grouped below) and `ob_dump_reader` — a real `^X.Y.Z` pub.dev
+  # constraint now (see docs/BACKLOG.md item 25), not the bare path dep it
+  # used to be, so Dependabot *would* see it — but there's nothing for it
+  # to bump: this repo's release.yml always bumps both packages' versions
+  # together in one commit, so a newer `ob_dump_reader` never exists
+  # without `flutter/pubspec.yaml`'s constraint already matching it. Its
+  # own vendored LMDB copy (src/lmdb/) is pinned via LMDB_VERSION, not a
+  # pub.dev dep either way.
+  - package-ecosystem: "pub"
+    directory: "/flutter"
+    schedule:
+      interval: "weekly"
+    groups:
       flutter-updates:
         patterns:
           - "flutter*"
         update-types:
           - "minor"
           - "patch"
-
-  # flutter/ob_dump_reader_flutter's only real dependency is ob_dump_reader
-  # (path dep, not tracked by Dependabot). Its own vendored LMDB copy
-  # (src/lmdb/) is likewise pinned via LMDB_VERSION, not a pub.dev dep.
-  - package-ecosystem: "pub"
-    directory: "/flutter"
-    schedule:
-      interval: "weekly"
+      flutter-dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
