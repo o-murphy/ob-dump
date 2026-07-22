@@ -110,8 +110,14 @@ jobs:
           VERSION="${{ steps.meta.outputs.version }}"
           sed -i "s/^version: .*/version: $VERSION/" dart/pubspec.yaml
           sed -i "s/^version: .*/version: $VERSION/" flutter/pubspec.yaml
+          # flutter/pubspec.yaml's real dependency constraint on
+          # ob_dump_reader (dependency_overrides handles local/CI dev
+          # separately — see that file) — must stay in lockstep too, same
+          # as the two `version:` fields above.
+          sed -i "s/^  ob_dump_reader: \^.*/  ob_dump_reader: ^$VERSION/" flutter/pubspec.yaml
           sed -i "s/^  \"version\": \".*\"/  \"version\": \"$VERSION\"/" js/package.json
           grep '^version:' dart/pubspec.yaml flutter/pubspec.yaml
+          grep '^  ob_dump_reader: \^' flutter/pubspec.yaml
           grep '"version":' js/package.json
 
       - name: Commit and push version bump
@@ -203,8 +209,7 @@ jobs:
 
       # pub.dev refuses to publish a package without its own CHANGELOG.md —
       # generated fresh from the repo root's CHANGELOG.md, in this ephemeral
-      # checkout only (never committed back, same as publish-flutter's own
-      # pubspec.yaml rewrite below).
+      # checkout only (never committed back).
       - name: Generate CHANGELOG.md
         working-directory: .
         run: python3 scripts/ci/sync_changelogs.py dart
@@ -248,22 +253,11 @@ jobs:
         with:
           channel: stable
 
-      - name: "Make pubspec.yaml publishable (path dep + publish_to: none)"
-        run: |
-          VERSION="${{ needs.bump-versions.outputs.version }}"
-          flutter pub remove ob_dump_reader
-          flutter pub add "ob_dump_reader@^$VERSION"
-          # `publish_to: none` blocks `pub publish` outright, same as the
-          # path dep — `pub remove/add` only manage dependencies, not this
-          # top-level field, so it needs its own edit.
-          sed -i '/^publish_to: none$/d' pubspec.yaml
-          # Neither edit is committed — dart/pubspec.yaml in the repo keeps
-          # `publish_to: none` and the path dep for local dev; this rewrite
-          # only exists in this ephemeral checkout, purely so `pub publish`
-          # sees a publishable pubspec.
-          grep -A1 '^  ob_dump_reader' pubspec.yaml
-          grep -q '^publish_to:' pubspec.yaml && echo "ERROR: publish_to still present" && exit 1 || true
-
+      # No pubspec.yaml rewrite needed here anymore: bump-versions (above)
+      # already committed a real `ob_dump_reader: ^$VERSION` constraint to
+      # main, and `dependency_overrides` (local-dev-only path dep) doesn't
+      # affect what gets published or what a consumer resolves — see the
+      # comments in flutter/pubspec.yaml itself.
       - name: flutter pub get
         run: flutter pub get
       - name: flutter analyze

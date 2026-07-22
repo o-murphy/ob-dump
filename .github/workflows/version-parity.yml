@@ -24,3 +24,25 @@ jobs:
             echo "::error::Version mismatch: dart/ is $dart_version but flutter/ is $flutter_version — bump both together."
             exit 1
           fi
+
+      # flutter/pubspec.yaml's dependencies.ob_dump_reader is a real
+      # `^X.Y.Z` constraint (local dev instead resolves via
+      # dependency_overrides), checked in and bumped alongside both
+      # `version:` fields above — must stay in lockstep too, or a consumer
+      # installing ob_dump_reader_flutter from pub.dev would resolve a
+      # stale/mismatched ob_dump_reader.
+      - name: Compare flutter/pubspec.yaml's ob_dump_reader constraint
+        run: |
+          dart_version=$(grep -m1 '^version:' dart/pubspec.yaml | awk '{print $2}')
+          dep_constraint=$(grep -m1 '^  ob_dump_reader: \^' flutter/pubspec.yaml | awk '{print $2}')
+          dep_version=${dep_constraint#^}
+          echo "dart/pubspec.yaml version:                    $dart_version"
+          echo "flutter/pubspec.yaml ob_dump_reader constraint: $dep_constraint"
+          if [ -z "$dep_constraint" ]; then
+            echo "::error::flutter/pubspec.yaml has no '  ob_dump_reader: ^...' line under dependencies:"
+            exit 1
+          fi
+          if [ "$dart_version" != "$dep_version" ]; then
+            echo "::error::Version mismatch: dart/ is $dart_version but flutter/pubspec.yaml's ob_dump_reader dependency constraint is ^$dep_version — bump it together with both version: fields."
+            exit 1
+          fi
