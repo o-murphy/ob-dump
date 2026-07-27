@@ -1,6 +1,6 @@
-import ob_dump_reader as ob
-
 from _fixture import data_key, relation_key, schema_key, write_fixture
+
+import ob_dump_reader as ob
 
 
 def test_extracts_data_records_and_ignores_non_data_keys(tmp_path):

@@ -1,7 +1,6 @@
-from collections.abc import Buffer
-from os import PathLike
-from typing import Callable
+from collections.abc import Buffer, Callable
 from dataclasses import dataclass
+from os import PathLike
 
 import lmdb
 
@@ -38,21 +37,19 @@ def read_objectbox_records(
         map_size=512 * 1024 * 1024,
         max_dbs=4,
         readonly=True,
-    ) as db:
-        with db.begin(write=False) as txn:
-            with txn.cursor() as cursor:
-                for key, value in cursor:
-                    if key and len(key) == 8 and key[0] == KEY_TYPE_DATA:
-                        entity_id = key[3] // 4
-                        object_id = read_uint32be(key, 4)
+    ) as db, db.begin(write=False) as txn, txn.cursor() as cursor:
+        for key, value in cursor:
+            if key and len(key) == 8 and key[0] == KEY_TYPE_DATA:
+                entity_id = key[3] // 4
+                object_id = read_uint32be(key, 4)
 
-                        on_record(
-                            ObRecord(
-                                entity_id=entity_id,
-                                object_id=object_id,
-                                data=bytes(value),  # copy out of the mmap'd page
-                            )
-                        )
+                on_record(
+                    ObRecord(
+                        entity_id=entity_id,
+                        object_id=object_id,
+                        data=bytes(value),  # copy out of the mmap'd page
+                    )
+                )
 
 
 def read_objectbox_to_many_targets(
@@ -82,12 +79,10 @@ def read_objectbox_to_many_targets(
         map_size=512 * 1024 * 1024,
         max_dbs=4,
         readonly=True,
-    ) as db:
-        with db.begin(write=False) as txn:
-            with txn.cursor() as cursor:
-                if cursor.set_range(prefix):
-                    for key, _ in cursor:
-                        if bytes(key[:8]) != prefix:
-                            break
-                        targets.append(read_uint32be(key, 8))
+    ) as db, db.begin(write=False) as txn, txn.cursor() as cursor:
+        if cursor.set_range(prefix):
+            for key, _ in cursor:
+                if bytes(key[:8]) != prefix:
+                    break
+                targets.append(read_uint32be(key, 8))
     return targets
