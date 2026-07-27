@@ -92,7 +92,7 @@ provides-extras = ["orjson"]
 dev = [
     { name = "orjson", specifier = ">=3.11.8" },
     { name = "pytest", specifier = ">=9.0.3" },
-    { name = "ruff", specifier = ">=0.12.11" },
+    { name = "ruff", specifier = ">=0.15.22" },
 ]
 
 [[package]]
