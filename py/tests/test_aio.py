@@ -1,8 +1,8 @@
 import asyncio
 
-import ob_dump_reader.aio as ob_aio
-
 from _fixture import data_key, relation_key, schema_key, write_fixture
+
+import ob_dump_reader.aio as ob_aio
 
 
 def test_extracts_data_records_and_ignores_non_data_keys(tmp_path):
