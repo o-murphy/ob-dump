@@ -42,12 +42,12 @@
   },
   "dependencies": {
     "flatbuffers": "^25.2.10",
-    "lmdb": "^3.5.7"
+    "lmdb": "^3.5.8"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4",
+    "vite": "^8.3.5",
     "vitest": "^5.0.5"
   }
 }
