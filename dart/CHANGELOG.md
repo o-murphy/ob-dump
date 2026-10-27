@@ -8,7 +8,7 @@ Generated from the repo root's `CHANGELOG.md` at publish time — see that
 file if you're reading this in the published package and want the full
 picture across the other packages in this repo too.
 
-## [Unreleased]
+## [0.1.0-beta.3] - 2026-10-27
 
 ### Changed
 
@@ -147,7 +147,7 @@ picture across the other packages in this repo too.
   FlatBuffers/schema knowledge; pair with `flatc --dart` output generated
   from `ob_dump --fbs` (see the parent [`ob-dump`](.) project).
 
-[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.2...HEAD
+[0.1.0-beta.3]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.2...v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.1...v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...v0.1.0-beta.1
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2

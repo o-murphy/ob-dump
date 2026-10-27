@@ -1,6 +1,6 @@
 name: ob_dump_reader
 description: "Minimal ObjectBox LMDB reader toolkit for Dart and Flutter: reads data.mdb directly through a bundled LMDB (build hook)."
-version: 0.1.0-beta.2
+version: 0.1.0-beta.3
 homepage: https://github.com/o-murphy/ob-dump
 environment:
   sdk: ^3.10.0

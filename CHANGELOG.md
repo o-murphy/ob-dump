@@ -69,6 +69,41 @@ this) to add once that's done.
 
 ## [Unreleased]
 
+### js/
+
+#### Added
+
+- Initial `ob-dump-reader` npm package — `readObjectboxRecords()`/
+  `readObjectboxToManyTargets()` walk an ObjectBox LMDB store directly via
+  [`lmdb`](https://www.npmjs.com/package/lmdb) (no FFI binding to this
+  repo's C++ core), same pattern as `dart/`/`py/`. Pair with `flatc --ts`
+  output generated from `ob_dump --fbs` to decode each record's raw
+  FlatBuffers bytes.
+- `decodeHelpers` (`decodeFlex()`, `bytesToHex()`, `bytesToUuidString()`,
+  `tryParseJsonString()`) — same `Flex`/`ExternalPropertyType` decode
+  helpers as `dart/`/`py/`, mirroring `ob-dump`'s own C++ decode exactly.
+- `ob-dump-reader` CLI (`js/src/cli.ts`) — prints each record's entity id,
+  object id, and raw FlatBuffers data length.
+- `postinstall` script (`js/scripts/postinstall.cjs`) rebuilds `lmdb` from
+  source with `LMDB_DATA_V1=true`, required to read real ObjectBox
+  databases at all: `lmdb`'s prebuilt binaries default to LMDB's newer
+  data format v2, while ObjectBox (like this repo's own `dart/`/`py/`
+  packages) writes the legacy data format v1 — opening a real ObjectBox
+  `data.mdb` with a v2-expecting build segfaults the whole Node process
+  outright, not a catchable exception (confirmed against a real
+  ObjectBox-produced database, not assumed). Requires a C/C++ build
+  toolchain on install, same as this repo's own `dart/` package already
+  needs for its vendored-LMDB build step.
+- `lmdb`'s own `noSubdir` file-vs-directory auto-detection guesses from
+  whether the path contains a "." — wrong for ObjectBox data directories
+  with a dot in their name (e.g. a reverse-DNS app-data directory like
+  `com.example.app/`); `openStore()` now always passes `noSubdir: false`
+  explicitly, confirmed against a real such directory (without it, `open()`
+  tried to open the directory itself as the data file and failed with
+  `EISDIR`).
+
+## [0.1.0-beta.3] - 2026-10-27
+
 ### dart/
 
 #### Changed
@@ -132,38 +167,21 @@ this) to add once that's done.
   per-platform build files and the lockstep version-parity check are gone, and
   `release.yml` no longer has a `publish-flutter` job.
 
+### py/
+
+#### Changed
+
+- Version bump only — republished in lockstep with `dart` (see the intro
+  above), no functional changes.
+
 ### js/
 
-#### Added
+#### Changed
 
-- Initial `ob-dump-reader` npm package — `readObjectboxRecords()`/
-  `readObjectboxToManyTargets()` walk an ObjectBox LMDB store directly via
-  [`lmdb`](https://www.npmjs.com/package/lmdb) (no FFI binding to this
-  repo's C++ core), same pattern as `dart/`/`py/`. Pair with `flatc --ts`
-  output generated from `ob_dump --fbs` to decode each record's raw
-  FlatBuffers bytes.
-- `decodeHelpers` (`decodeFlex()`, `bytesToHex()`, `bytesToUuidString()`,
-  `tryParseJsonString()`) — same `Flex`/`ExternalPropertyType` decode
-  helpers as `dart/`/`py/`, mirroring `ob-dump`'s own C++ decode exactly.
-- `ob-dump-reader` CLI (`js/src/cli.ts`) — prints each record's entity id,
-  object id, and raw FlatBuffers data length.
-- `postinstall` script (`js/scripts/postinstall.cjs`) rebuilds `lmdb` from
-  source with `LMDB_DATA_V1=true`, required to read real ObjectBox
-  databases at all: `lmdb`'s prebuilt binaries default to LMDB's newer
-  data format v2, while ObjectBox (like this repo's own `dart/`/`py/`
-  packages) writes the legacy data format v1 — opening a real ObjectBox
-  `data.mdb` with a v2-expecting build segfaults the whole Node process
-  outright, not a catchable exception (confirmed against a real
-  ObjectBox-produced database, not assumed). Requires a C/C++ build
-  toolchain on install, same as this repo's own `dart/` package already
-  needs for its vendored-LMDB build step.
-- `lmdb`'s own `noSubdir` file-vs-directory auto-detection guesses from
-  whether the path contains a "." — wrong for ObjectBox data directories
-  with a dot in their name (e.g. a reverse-DNS app-data directory like
-  `com.example.app/`); `openStore()` now always passes `noSubdir: false`
-  explicitly, confirmed against a real such directory (without it, `open()`
-  tried to open the directory itself as the data file and failed with
-  `EISDIR`).
+- Version bump only — `js/package.json` is set to the release version in
+  lockstep with `dart`/`py` by `release.yml` (see the intro above); the
+  package is not published to npm yet, so its initial release notes stay under
+  `[Unreleased]` below, no functional changes in this release.
 
 ## [0.1.0-beta.2] - 2026-10-27
 
@@ -429,7 +447,8 @@ to reserve the package names — confirmed live via pub.dev's own API
   properly bundles the native LMDB library on Android/iOS/macOS (see the
   `0.1.0-alpha.2` entry above for why that dependency was since dropped).
 
-[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.2...HEAD
+[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.3...HEAD
+[0.1.0-beta.3]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.2...v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.1...v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...v0.1.0-beta.1
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2
