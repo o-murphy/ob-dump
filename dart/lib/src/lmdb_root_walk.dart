@@ -16,7 +16,6 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import 'lmdb_bindings.dart';
-import 'lmdb_native_library.dart';
 
 class LmdbException implements Exception {
   final String message;
@@ -25,10 +24,23 @@ class LmdbException implements Exception {
   String toString() => 'LmdbException: $message';
 }
 
-final LmdbBindings _bindings = LmdbBindings(loadLmdbLibrary());
+/// The `@Native` bindings resolve the library lazily, so a missing or
+/// unloadable `liblmdb` would otherwise only surface as an `ArgumentError`
+/// ("Couldn't resolve native function 'mdb_env_create'") deep inside the first
+/// read. Probes it up front and says what is wrong instead.
+void ensureLmdbLoaded() {
+  try {
+    mdbStrError(0);
+  } on Object catch (e) {
+    throw LmdbException(
+      'Could not load the native LMDB library bundled with ob_dump_reader '
+      '(built by its build hook from src/lmdb): $e',
+    );
+  }
+}
 
 String _strerror(int code) {
-  final ptr = _bindings.mdbStrError(code);
+  final ptr = mdbStrError(code);
   return ptr == nullptr ? 'error $code' : ptr.cast<Utf8>().toDartString();
 }
 
@@ -50,20 +62,20 @@ void forEachRootEntry(
   String path,
   bool Function(Uint8List key, Uint8List value) onEntry,
 ) {
-  final b = _bindings;
+  ensureLmdbLoaded();
   final envPtrPtr = calloc<Pointer<MDBEnv>>();
   try {
-    _check(b.mdbEnvCreate(envPtrPtr), 'mdb_env_create');
+    _check(mdbEnvCreate(envPtrPtr), 'mdb_env_create');
     final env = envPtrPtr.value;
     try {
-      _check(b.mdbEnvSetMaxdbs(env, 1), 'mdb_env_set_maxdbs');
-      _check(b.mdbEnvSetMapsize(env, 512 * 1024 * 1024), 'mdb_env_set_mapsize');
+      _check(mdbEnvSetMaxdbs(env, 1), 'mdb_env_set_maxdbs');
+      _check(mdbEnvSetMapsize(env, 512 * 1024 * 1024), 'mdb_env_set_mapsize');
 
       final isFile = FileSystemEntity.isFileSync(path);
       final flags = mdbRdOnly | (isFile ? mdbNoSubdir : 0);
       final pathPtr = path.toNativeUtf8();
       try {
-        final rc = b.mdbEnvOpen(env, pathPtr.cast(), flags, 0x1a4 /* 0644 */);
+        final rc = mdbEnvOpen(env, pathPtr.cast(), flags, 0x1a4 /* 0644 */);
         if (rc != mdbSuccess) {
           throw LmdbException('mdb_env_open($path): ${_strerror(rc)}');
         }
@@ -73,13 +85,16 @@ void forEachRootEntry(
 
       final txnPtrPtr = calloc<Pointer<MDBTxn>>();
       try {
-        _check(b.mdbTxnBegin(env, nullptr, mdbRdOnly, txnPtrPtr), 'mdb_txn_begin');
+        _check(
+          mdbTxnBegin(env, nullptr, mdbRdOnly, txnPtrPtr),
+          'mdb_txn_begin',
+        );
         final txn = txnPtrPtr.value;
         try {
           final dbiPtr = calloc<Uint32>();
           final int dbi;
           try {
-            _check(b.mdbDbiOpen(txn, nullptr, 0, dbiPtr), 'mdb_dbi_open');
+            _check(mdbDbiOpen(txn, nullptr, 0, dbiPtr), 'mdb_dbi_open');
             dbi = dbiPtr.value;
           } finally {
             calloc.free(dbiPtr);
@@ -87,18 +102,18 @@ void forEachRootEntry(
 
           final cursorPtrPtr = calloc<Pointer<MDBCursor>>();
           try {
-            _check(b.mdbCursorOpen(txn, dbi, cursorPtrPtr), 'mdb_cursor_open');
+            _check(mdbCursorOpen(txn, dbi, cursorPtrPtr), 'mdb_cursor_open');
             final cursor = cursorPtrPtr.value;
             try {
               final keyVal = calloc<MDBVal>();
               final dataVal = calloc<MDBVal>();
               try {
-                var rc = b.mdbCursorGet(cursor, keyVal, dataVal, mdbFirst);
+                var rc = mdbCursorGet(cursor, keyVal, dataVal, mdbFirst);
                 while (rc == mdbSuccess) {
                   final key = _valToBytes(keyVal.ref);
                   final value = _valToBytes(dataVal.ref);
                   if (!onEntry(key, value)) break;
-                  rc = b.mdbCursorGet(cursor, keyVal, dataVal, mdbNext);
+                  rc = mdbCursorGet(cursor, keyVal, dataVal, mdbNext);
                 }
                 if (rc != mdbSuccess && rc != mdbNotFound) {
                   throw LmdbException('mdb_cursor_get: ${_strerror(rc)}');
@@ -108,19 +123,19 @@ void forEachRootEntry(
                 calloc.free(dataVal);
               }
             } finally {
-              b.mdbCursorClose(cursor);
+              mdbCursorClose(cursor);
             }
           } finally {
             calloc.free(cursorPtrPtr);
           }
         } finally {
-          b.mdbTxnAbort(txn);
+          mdbTxnAbort(txn);
         }
       } finally {
         calloc.free(txnPtrPtr);
       }
     } finally {
-      b.mdbEnvClose(env);
+      mdbEnvClose(env);
     }
   } finally {
     calloc.free(envPtrPtr);
@@ -131,22 +146,22 @@ void forEachRootEntry(
 /// [sourceObjectId] via `ToMany` relation [relationId] (forward direction —
 /// see docs/BACKLOG.md "ToMany relations" for the key format this walks).
 List<int> readRelationTargets(String path, int relationId, int sourceObjectId) {
-  final b = _bindings;
   final targets = <int>[];
 
+  ensureLmdbLoaded();
   final envPtrPtr = calloc<Pointer<MDBEnv>>();
   try {
-    _check(b.mdbEnvCreate(envPtrPtr), 'mdb_env_create');
+    _check(mdbEnvCreate(envPtrPtr), 'mdb_env_create');
     final env = envPtrPtr.value;
     try {
-      _check(b.mdbEnvSetMaxdbs(env, 1), 'mdb_env_set_maxdbs');
-      _check(b.mdbEnvSetMapsize(env, 512 * 1024 * 1024), 'mdb_env_set_mapsize');
+      _check(mdbEnvSetMaxdbs(env, 1), 'mdb_env_set_maxdbs');
+      _check(mdbEnvSetMapsize(env, 512 * 1024 * 1024), 'mdb_env_set_mapsize');
 
       final isFile = FileSystemEntity.isFileSync(path);
       final flags = mdbRdOnly | (isFile ? mdbNoSubdir : 0);
       final pathPtr = path.toNativeUtf8();
       try {
-        final rc = b.mdbEnvOpen(env, pathPtr.cast(), flags, 0x1a4);
+        final rc = mdbEnvOpen(env, pathPtr.cast(), flags, 0x1a4);
         if (rc != mdbSuccess) {
           throw LmdbException('mdb_env_open($path): ${_strerror(rc)}');
         }
@@ -156,13 +171,16 @@ List<int> readRelationTargets(String path, int relationId, int sourceObjectId) {
 
       final txnPtrPtr = calloc<Pointer<MDBTxn>>();
       try {
-        _check(b.mdbTxnBegin(env, nullptr, mdbRdOnly, txnPtrPtr), 'mdb_txn_begin');
+        _check(
+          mdbTxnBegin(env, nullptr, mdbRdOnly, txnPtrPtr),
+          'mdb_txn_begin',
+        );
         final txn = txnPtrPtr.value;
         try {
           final dbiPtr = calloc<Uint32>();
           final int dbi;
           try {
-            _check(b.mdbDbiOpen(txn, nullptr, 0, dbiPtr), 'mdb_dbi_open');
+            _check(mdbDbiOpen(txn, nullptr, 0, dbiPtr), 'mdb_dbi_open');
             dbi = dbiPtr.value;
           } finally {
             calloc.free(dbiPtr);
@@ -170,7 +188,7 @@ List<int> readRelationTargets(String path, int relationId, int sourceObjectId) {
 
           final cursorPtrPtr = calloc<Pointer<MDBCursor>>();
           try {
-            _check(b.mdbCursorOpen(txn, dbi, cursorPtrPtr), 'mdb_cursor_open');
+            _check(mdbCursorOpen(txn, dbi, cursorPtrPtr), 'mdb_cursor_open');
             final cursor = cursorPtrPtr.value;
             try {
               // 12-byte key: [0x08][0x00][0x00][(relId<<2)|dir][srcId:BE][tgtId:BE].
@@ -181,7 +199,9 @@ List<int> readRelationTargets(String path, int relationId, int sourceObjectId) {
               final prefix = Uint8List(8);
               prefix[0] = 0x08;
               prefix[3] = ((relationId << 2) | 0) & 0xFF;
-              ByteData.view(prefix.buffer).setUint32(4, sourceObjectId, Endian.big);
+              ByteData.view(
+                prefix.buffer,
+              ).setUint32(4, sourceObjectId, Endian.big);
 
               final searchKey = Uint8List(12)..setRange(0, 8, prefix);
 
@@ -193,15 +213,16 @@ List<int> readRelationTargets(String path, int relationId, int sourceObjectId) {
                 keyVal.ref.mvSize = 12;
                 keyVal.ref.mvData = searchKeyPtr.cast();
 
-                var rc = b.mdbCursorGet(cursor, keyVal, dataVal, mdbSetRange);
+                var rc = mdbCursorGet(cursor, keyVal, dataVal, mdbSetRange);
                 while (rc == mdbSuccess) {
                   final key = _valToBytes(keyVal.ref);
-                  if (key.length != 12 ||
-                      !_startsWith(key, prefix)) {
+                  if (key.length != 12 || !_startsWith(key, prefix)) {
                     break;
                   }
-                  targets.add(ByteData.sublistView(key, 8, 12).getUint32(0, Endian.big));
-                  rc = b.mdbCursorGet(cursor, keyVal, dataVal, mdbNext);
+                  targets.add(
+                    ByteData.sublistView(key, 8, 12).getUint32(0, Endian.big),
+                  );
+                  rc = mdbCursorGet(cursor, keyVal, dataVal, mdbNext);
                 }
                 if (rc != mdbSuccess && rc != mdbNotFound) {
                   throw LmdbException('mdb_cursor_get: ${_strerror(rc)}');
@@ -212,19 +233,19 @@ List<int> readRelationTargets(String path, int relationId, int sourceObjectId) {
                 calloc.free(searchKeyPtr);
               }
             } finally {
-              b.mdbCursorClose(cursor);
+              mdbCursorClose(cursor);
             }
           } finally {
             calloc.free(cursorPtrPtr);
           }
         } finally {
-          b.mdbTxnAbort(txn);
+          mdbTxnAbort(txn);
         }
       } finally {
         calloc.free(txnPtrPtr);
       }
     } finally {
-      b.mdbEnvClose(env);
+      mdbEnvClose(env);
     }
   } finally {
     calloc.free(envPtrPtr);

@@ -39,17 +39,10 @@ updates:
         patterns:
           - "*"
 
-  # flutter/ob_dump_reader_flutter's real dependencies: the `flutter` SDK
-  # itself (grouped below) and `ob_dump_reader` — a real `^X.Y.Z` pub.dev
-  # constraint now (see docs/BACKLOG.md item 25), not the bare path dep it
-  # used to be, so Dependabot *would* see it — but there's nothing for it
-  # to bump: this repo's release.yml always bumps both packages' versions
-  # together in one commit, so a newer `ob_dump_reader` never exists
-  # without `flutter/pubspec.yaml`'s constraint already matching it. Its
-  # own vendored LMDB copy (src/lmdb/) is pinned via LMDB_VERSION, not a
-  # pub.dev dep either way.
+  # dart/example: the Flutter app CI builds and runs on every platform (the
+  # `flutter` SDK deps and flutter_lints; ob_dump_reader itself is a path dep).
   - package-ecosystem: "pub"
-    directory: "/flutter"
+    directory: "/dart/example"
     schedule:
       interval: "weekly"
     groups:
@@ -59,7 +52,7 @@ updates:
         update-types:
           - "minor"
           - "patch"
-      flutter-dependencies:
+      example-dependencies:
         patterns:
           - "*"
 
@@ -73,9 +66,8 @@ updates:
           - "*"
 
   # NOTE: LMDB's version is pinned once in LMDB_VERSION at the repo root
-  # (read by the C++ core's CMakeLists.txt FetchContent_Declare; dart/ and
-  # flutter/'s own vendored copies under src/lmdb/ must be bumped to match
-  # by hand — see scripts/ci/verify-lmdb-vendor.sh, which checks all three
-  # stay in sync). flatbuffers and nlohmann/json are likewise pinned via
+  # (read by the C++ core's CMakeLists.txt FetchContent_Declare; dart/'s
+  # own vendored copy under src/lmdb/ must be bumped to match by hand — see
+  # scripts/ci/verify-lmdb-vendor.sh, which checks both stay in sync). flatbuffers and nlohmann/json are likewise pinned via
   # `GIT_TAG` in the root CMakeLists.txt. Dependabot has no "cmake"/
   # FetchContent ecosystem, so all of these version bumps stay manual.

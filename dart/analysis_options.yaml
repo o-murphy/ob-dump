@@ -1,0 +1,5 @@
+analyzer:
+  exclude:
+    # A Flutter app with its own pubspec/analysis_options; analyzed with
+    # `flutter analyze` (scripts/ci/flutter-smoke.sh), not the Dart SDK.
+    - example/**

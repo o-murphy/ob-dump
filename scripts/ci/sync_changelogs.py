@@ -3,11 +3,10 @@
 hand-authored CHANGELOG.md — the only source of truth for changelog
 content. Not committed anywhere: pub.dev requires a package to ship its
 own CHANGELOG.md, so release.yml runs this ephemerally, right before
-publish-dart/publish-flutter, in that ephemeral checkout only (same
-pattern already used for flutter/pubspec.yaml's publish-time
-dependency-version swap — never written back to the repo).
+publish-dart, in that ephemeral checkout only (never written back to the
+repo).
 
-dart/.gitignore and flutter/.gitignore deliberately do NOT ignore
+dart/.gitignore deliberately does NOT ignore
 CHANGELOG.md, even though it's generated: `pub publish` decides package
 contents by git tracking status, and explicitly excludes gitignored files
 even if force-added to the index (confirmed empirically — `git add -f`
@@ -16,13 +15,12 @@ untracked-but-not-ignored file is what actually works, no commit needed.
 
 Root file format: version headings ("## [X]" or "## [X] - DATE"), each
 containing one "### <pkg>/" subsection per package that changed in that
-version (pkg in dart/flutter/py/js), with #### sub-headings (Changed/Added/
+version (pkg in dart/py/js), with #### sub-headings (Changed/Added/
 Removed/Fixed) one level deeper than each package's own file uses (since
 the package file has no "### <pkg>/" wrapper of its own).
 
 Usage: scripts/ci/sync_changelogs.py [pkg ...]
-  No args: generates dart/CHANGELOG.md, flutter/CHANGELOG.md, py/CHANGELOG.md,
-  and js/CHANGELOG.md. With args, only the named package(s), e.g.:
+  No args: generates dart/CHANGELOG.md, py/CHANGELOG.md and js/CHANGELOG.md. With args, only the named package(s), e.g.:
     scripts/ci/sync_changelogs.py dart
 """
 
@@ -31,7 +29,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-PACKAGES = ("dart", "flutter", "py", "js")
+PACKAGES = ("dart", "py", "js")
 
 VERSION_HEADING_RE = re.compile(r"^## \[(?P<version>[^\]]+)\](?P<rest>.*)$")
 PKG_HEADING_RE = re.compile(r"^### (?P<pkg>\w+)/\s*$")

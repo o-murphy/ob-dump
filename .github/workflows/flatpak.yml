@@ -1,0 +1,166 @@
+name: Flatpak
+
+# Builds dart/example (a Flutter app that depends on ob_dump_reader by path) as an OFFLINE
+# Flatpak with flutpak, the way ebalistyka is built, then runs it inside the
+# sandbox. This is the end-to-end check that the package's build hook compiles
+# the bundled C++ sources with no network access, which an ordinary
+# `flutter build` on a CI runner cannot show. See dart/example/flutpak.yaml.
+
+on:
+  # Manual only (Actions -> Flatpak -> Run workflow): the build takes a long
+  # time, so it is run on demand, e.g. after publishing a pre-release.
+  workflow_dispatch:
+    inputs:
+      ob_dump_reader_version:
+        description: >-
+          Build against this PUBLISHED ob_dump_reader version from pub.dev
+          instead of the path dependency (../). Only versions that already use
+          the build hook (the release after 0.1.0-beta.2) work. Proves the
+          offline build works from the package archive alone, independent of
+          the checked-out sources. Empty: use the path dependency.
+        type: string
+        default: ""
+
+concurrency:
+  group: flatpak-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  APP_ID: io.github.o_murphy.ob_dump
+
+jobs:
+  generate:
+    name: Generate Flatpak manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Done here, on the runner's working tree, not in the committed files:
+      # dart/example keeps its path dependency for everyday use.
+      - name: Use the published ob_dump_reader instead of the path dependency
+        if: inputs.ob_dump_reader_version != ''
+        env:
+          OB_DUMP_READER_VERSION: ${{ inputs.ob_dump_reader_version }}
+        run: |
+          set -euo pipefail
+          # `/^  ob_dump_reader:$/{N;...}` joins the dependency line with its `path:`
+          # line and replaces both with `ob_dump_reader: <version>`.
+          EXPR="/^  ob_dump_reader:\$/{N;s|.*|  ob_dump_reader: ${OB_DUMP_READER_VERSION}|}"
+          # 1. The app resolves the published package (flutpak turns the
+          #    resulting pubspec.lock into pubspec-sources.json).
+          sed -i "$EXPR" dart/example/pubspec.yaml
+          grep -q "^  ob_dump_reader: ${OB_DUMP_READER_VERSION}\$" dart/example/pubspec.yaml
+          # 2. The sandbox builds the committed pubspec.yaml (git source): make
+          #    the same edit there, just before `flutter pub get --offline`.
+          manifest="dart/example/flatpak/${APP_ID}.yml"
+          sed -i "s#^\( *\)- flutter pub get --offline\$#\1- \"sed -i -e '${EXPR}' pubspec.yaml\"\n&#" "$manifest"
+          grep -q "sed -i -e " "$manifest"
+          git diff --stat
+
+      - name: Install Flutter
+        uses: o-murphy/flutpak/.github/actions/flutter@v0.8.6
+        with:
+          flutter-version: 3.47.8
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+        working-directory: dart/example
+
+      - name: Generate manifest and validate
+        uses: o-murphy/flutpak/.github/actions/generate@v0.8.6
+        with:
+          config: dart/example/flutpak.yaml
+          commit: ${{ github.sha }}
+          artifact-path: dart/example/flatpak/generated/
+          artifact-name: flutpak-artifacts
+
+  build:
+    name: flatpak-${{ matrix.arch }}
+    needs: generate
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    steps:
+      - name: Set build metadata
+        id: meta
+        shell: bash
+        env:
+          MATRIX_ARCH: ${{ matrix.arch }}
+        run: |
+          case "$MATRIX_ARCH" in
+            arm64) arch_suffix="aarch64" ;;
+            *)     arch_suffix="x86_64"  ;;
+          esac
+          echo "arch_suffix=$arch_suffix" >> "$GITHUB_OUTPUT"
+          echo "bundle=ob_dump_example_linux_${arch_suffix}.flatpak" >> "$GITHUB_OUTPUT"
+
+      - name: Download generated Flatpak sources
+        uses: actions/download-artifact@v8
+        with:
+          name: flutpak-artifacts
+          path: flatpak/generated
+
+      - name: Cache Flatpak installation (org.flatpak.Builder + runtimes)
+        uses: actions/cache@v6
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-builder-25.08-llvm20-${{ runner.arch }}-v1
+
+      - name: Cache flatpak-builder downloads
+        uses: actions/cache@v6
+        with:
+          path: .flatpak-builder/downloads
+          key: flatpak-dl-${{ steps.meta.outputs.arch_suffix }}-${{ hashFiles('flatpak/generated/*.yml', 'flatpak/generated/pubspec-sources.json') }}
+          restore-keys: flatpak-dl-${{ steps.meta.outputs.arch_suffix }}-
+
+      - name: Build Flatpak
+        id: build-flatpak
+        uses: o-murphy/flutpak/.github/actions/build-flatpak@v0.8.6
+        with:
+          manifest: flatpak/generated/${{ env.APP_ID }}.yml
+          app-id: ${{ env.APP_ID }}
+          arch: ${{ steps.meta.outputs.arch_suffix }}
+          bundle: ${{ steps.meta.outputs.bundle }}
+          artifact-name: ob-dump-example-flatpak-${{ steps.meta.outputs.arch_suffix }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          retention-days: 2
+
+      # The library the hook compiled inside the sandbox must be in the bundle
+      # and loadable, and a headless run of the app must read a store.
+      - name: Smoke test the installed Flatpak
+        shell: bash
+        env:
+          BUNDLE: ${{ steps.meta.outputs.bundle }}
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y xvfb
+          dbus-run-session flatpak install --user -y --bundle "$BUNDLE"
+
+          SO=$(find "$HOME/.local/share/flatpak/app/$APP_ID" -name "liblmdb.so" | head -1)
+          if [ -z "$SO" ] || [ ! -f "$SO" ]; then
+            echo "ERROR: liblmdb.so not found in the installed Flatpak"
+            exit 1
+          fi
+          file -L "$SO" | grep -q ELF || { echo "ERROR: not an ELF file: $(file -L "$SO")"; exit 1; }
+          echo "✓ liblmdb.so: $(file -L "$SO" | cut -d: -f2- | xargs)"
+
+          set +e
+          OUT=$(timeout 120 xvfb-run --auto-servernum dbus-run-session \
+                flatpak run --env=OB_DUMP_EXAMPLE_SELFTEST=1 "$APP_ID" 2>&1)
+          CODE=$?
+          set -e
+          echo "$OUT"
+          if [ "$CODE" -ne 0 ] || ! echo "$OUT" | grep -q "ob_dump_reader self-test ok"; then
+            echo "ERROR: the self-test did not pass inside the sandbox (exit $CODE)"
+            exit 1
+          fi
+          echo "✓ ob_dump_reader read a store inside the Flatpak sandbox"

@@ -1,0 +1,24 @@
+# Builds this example as an offline Flatpak with flutpak
+# (https://github.com/o-murphy/flutpak), the way ebalistyka is built. CI:
+# .github/workflows/flatpak.yml. The app depends on ob_dump_reader by path (../), so the
+# whole repository is the Flatpak source and
+# the package's build hook compiles the C++ inside the sandbox, offline.
+output: flatpak
+
+flutter:
+  ref: 3.47.8
+
+foreign-deps-ref: v0.8.6
+
+repo-url: https://github.com/o-murphy/ob-dump.git
+subdir: dart/example
+
+app-id: io.github.o_murphy.ob_dump
+runtime-version: "25.08"
+command: ob_dump_example
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
