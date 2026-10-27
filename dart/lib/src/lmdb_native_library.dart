@@ -21,6 +21,8 @@ import 'dart:isolate';
 
 import 'package:path/path.dart' as p;
 
+import 'package_config_lookup.dart';
+
 /// The name CocoaPods gives the compiled framework on iOS/macOS is the
 /// *podspec's* name — `ob_dump_reader_flutter`, the Flutter wrapper
 /// package's own name, not this package's (`ob_dump_reader`) or the CMake
@@ -92,8 +94,17 @@ DynamicLibrary loadLmdbLibrary() {
     if (File(candidate).existsSync()) return DynamicLibrary.open(candidate);
   }
 
+  // 5. `.dart_tool/package_config.json` read directly — `flutter test`
+  //    (Flutter 3.47+) makes strategy 1 throw `UnsupportedError`, so the
+  //    library `dart run ob_dump_reader:build` placed in the package is only
+  //    reachable this way. Last, so compiled builds never pick up a stale
+  //    dev-time copy over the bundled one.
+  final fromConfig = findNativeLibInPackageConfig(
+      package: 'ob_dump_reader', platform: platform, libName: libName);
+  if (fromConfig != null) return DynamicLibrary.open(fromConfig);
+
   throw FileSystemException(
-      'Could not locate $libName (tried package: URI and ${candidates.join(", ")}). '
+      'Could not locate $libName (tried package: URI, package_config.json and ${candidates.join(", ")}). '
       'Run `dart run ob_dump_reader:build` for a plain Dart project, or make sure '
       'ob_dump_reader_flutter is a dependency for a Flutter app.');
 }

@@ -71,6 +71,17 @@ this) to add once that's done.
 
 ## [Unreleased]
 
+### dart/
+
+#### Fixed
+
+- The `liblmdb` shared library is found under `flutter test` on Flutter 3.47+:
+  there `Isolate.resolvePackageUriSync` throws `UnsupportedError`, so the
+  library placed by `dart run ob_dump_reader:build` was unreachable. As a last
+  resort the loader now reads `.dart_tool/package_config.json` directly (local
+  files only, no network), after the executable-relative lookup, so compiled
+  and bundled builds are unchanged.
+
 ### js/
 
 #### Added
