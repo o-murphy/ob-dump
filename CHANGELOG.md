@@ -104,6 +104,33 @@ this) to add once that's done.
   tried to open the directory itself as the data file and failed with
   `EISDIR`).
 
+## [0.1.0-beta.2] - 2026-10-27
+
+### dart/
+
+#### Fixed
+
+- The `liblmdb` shared library is found under `flutter test` on Flutter 3.47+:
+  there `Isolate.resolvePackageUriSync` throws `UnsupportedError`, so the
+  library placed by `dart run ob_dump_reader:build` was unreachable. As a last
+  resort the loader now reads `.dart_tool/package_config.json` directly (local
+  files only, no network), after the executable-relative lookup, so compiled
+  and bundled builds are unchanged.
+
+### flutter/
+
+#### Changed
+
+- Version bump only — republished in lockstep with `dart`/`py` (see the
+  intro above); `dependencies.ob_dump_reader` is now `^0.1.0-beta.2`.
+
+### py/
+
+#### Changed
+
+- Version bump only — republished in lockstep with `dart`/`flutter` (see
+  the intro above), no functional changes.
+
 ## [0.1.0-beta.1] - 2026-07-22
 
 ### dart/
@@ -341,6 +368,7 @@ to reserve the package names — confirmed live via pub.dev's own API
   properly bundles the native LMDB library on Android/iOS/macOS (see the
   `0.1.0-alpha.2` entry above for why that dependency was since dropped).
 
-[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.1...HEAD
+[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.2...HEAD
+[0.1.0-beta.2]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.1...v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...v0.1.0-beta.1
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2
