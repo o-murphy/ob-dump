@@ -42,7 +42,7 @@ jobs:
       # CHANGELOG.md of the package is generated at publish time (see
       # release.yml), pub refuses to publish without one.
       - run: python3 scripts/ci/sync_changelogs.py dart
-      - run: dart pub get
+      - run: dart pub get --no-example
         working-directory: dart
       - run: dart pub publish --dry-run
         working-directory: dart

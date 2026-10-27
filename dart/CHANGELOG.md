@@ -28,6 +28,9 @@ picture across the other packages in this repo too.
 
 ### Added
 
+- Known limitation (documented in `dart/README.md`): inside the macOS App
+  Sandbox LMDB's named POSIX semaphores are denied, so opening a store fails
+  with "Operation not permitted"; the example is run unsandboxed on macOS in CI.
 - The build hook checks the library it just built, so a bad build fails the
   **build** instead of the app at startup: the file must exist, export every
   `mdb_*` function the bindings call (the Windows DLL gets its exports from

@@ -6,7 +6,8 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../../dart"
 
-dart pub get
+# --no-example: dart/example is a Flutter app (needs `flutter pub get`).
+dart pub get --no-example
 
 # `dart test` runs the package's build hook (hook/build.dart), which compiles
 # the vendored LMDB source (src/lmdb/) -- no prebuilt binary and no separate

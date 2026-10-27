@@ -70,6 +70,13 @@ case "$TARGET" in
     # example/ has no macos/ runner checked in; generate it (keeps lib/ and
     # pubspec.yaml as they are).
     [ -d macos ] || flutter create --platforms=macos --project-name ob_dump_example .
+    # LMDB synchronises processes with named POSIX semaphores on macOS
+    # (sem_open), which the App Sandbox forbids (mdb_env_open: "Operation not
+    # permitted"), so the smoke app runs unsandboxed -- the same limitation
+    # applies to any sandboxed (e.g. Mac App Store) app using this package.
+    perl -0pi -e 's#(com\.apple\.security\.app-sandbox</key>\s*)<true/>#$1<false/>#' macos/Runner/*.entitlements
+    grep -A1 'app-sandbox' macos/Runner/Release.entitlements | grep -q '<false/>' \
+      || { echo "could not disable the App Sandbox in macos/Runner/Release.entitlements" >&2; exit 1; }
     flutter pub get
     flutter build macos --release
     APP="$(find build/macos -type d -name 'ob_dump_example.app' | head -1)"
@@ -96,7 +103,23 @@ case "$TARGET" in
     [ -n "$UDID" ] || { echo "no iPhone simulator available on this runner" >&2; exit 1; }
     xcrun simctl boot "$UDID" || true
     xcrun simctl bootstatus "$UDID" -b
-    flutter test integration_test -d "$UDID"
+    # Bounded: a hang here (e.g. the app crashing at launch while flutter waits
+    # for its VM service) must fail the job with the simulator log, not run
+    # until the job timeout.
+    set +e
+    ( sleep 900; echo "iOS integration test exceeded 15 min" >&2; pkill -f 'flutter_tools' ) &
+    WD=$!
+    flutter test integration_test -d "$UDID" --reporter expanded
+    CODE=$?
+    kill "$WD" 2>/dev/null
+    set -e
+    if [ "$CODE" -ne 0 ]; then
+      echo "--- simulator log for Runner (last 10 min) ---" >&2
+      xcrun simctl spawn "$UDID" log show --last 10m --style compact \
+        --predicate 'process == "Runner" OR eventMessage CONTAINS[c] "lmdb" OR eventMessage CONTAINS[c] "ob_dump"' 2>&1 | tail -150 >&2 || true
+      echo "--- end ---" >&2
+      exit "$CODE"
+    fi
     ;;
   windows)
     flutter build windows --release

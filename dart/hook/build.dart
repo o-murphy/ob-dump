@@ -32,6 +32,10 @@ Future<void> main(List<String> args) async {
         root.resolve('src/lmdb_exports_win.c').toFilePath(),
       ],
       includes: [root.resolve('src/lmdb/').toFilePath()],
+      // mdb.c recognises Android only by the `ANDROID` macro (the Android
+      // CMake toolchain defines it, clang does not): without it the build tries
+      // robust pthread mutexes, which Bionic lacks, and fails to compile.
+      defines: {if (os == OS.android) 'ANDROID': null},
       // glibc < 2.34 keeps pthread_mutex_* in libpthread (Android's bionic and
       // the Apple libc have it in libc).
       libraries: [

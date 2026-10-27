@@ -16,6 +16,7 @@
 #pragma comment(linker, "/EXPORT:mdb_cursor_open")
 #pragma comment(linker, "/EXPORT:mdb_cursor_close")
 #pragma comment(linker, "/EXPORT:mdb_cursor_get")
+#pragma comment(linker, "/EXPORT:mdb_strerror")
 #else
 /* An empty translation unit is not valid ISO C. */
 typedef int ob_dump_reader_exports_unused;

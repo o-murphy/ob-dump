@@ -35,6 +35,14 @@ and in AOT release builds on Android, iOS, Linux, macOS and Windows (there is
 no web support: LMDB needs a file system). A C compiler is all a build machine
 needs (the Android NDK / Xcode / Visual Studio that Flutter already requires).
 
+**Sandboxed macOS apps:** LMDB synchronises processes with named POSIX
+semaphores on macOS (`sem_open`), which the macOS App Sandbox forbids — opening
+a store fails with `mdb_env_open ...: Operation not permitted`. Apps that read a
+store from inside the sandbox (e.g. Mac App Store builds) have to run without it
+(or use an entitlement that allows it); unsandboxed apps, `dart run` and
+`flutter test` are unaffected. CI runs the macOS example unsandboxed for this
+reason.
+
 If the library cannot be built or loaded, the *build* fails (the hook checks
 what it produced), and reading throws an `LmdbException` that names the
 problem.
