@@ -10,6 +10,13 @@ picture across the other packages in this repo too.
 
 Version numbers are derived from git tags via `setuptools_scm`, not hand-bumped in this file.
 
+## [0.1.0-beta.2] - 2026-10-27
+
+### Changed
+
+- Version bump only — republished in lockstep with `dart`/`flutter` (see
+  the intro above), no functional changes.
+
 ## [0.1.0-beta.1] - 2026-07-22
 
 ### Fixed
@@ -106,5 +113,6 @@ Version numbers are derived from git tags via `setuptools_scm`, not hand-bumped 
   `__init__.py` here holds real logic (not just re-exports), so excluding
   it from linting was hiding real issues (see the fixes above).
 
+[0.1.0-beta.2]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.1...v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...v0.1.0-beta.1
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2
