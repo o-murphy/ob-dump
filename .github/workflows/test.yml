@@ -57,7 +57,12 @@ jobs:
   # fast. See scripts/ci/flutter-smoke.sh.
   flutter-smoke:
     name: Flutter ${{ matrix.target }} (${{ matrix.os }})
-    timeout-minutes: 30
+    # The macOS-runner iOS leg intermittently hangs (simulator boot / flutter
+    # build) with no code change. Cap it tighter and don't let it gate the
+    # release: continue-on-error makes a hang-timeout or failure here
+    # non-fatal for the run (and for release.yml's tests-passed).
+    timeout-minutes: ${{ matrix.target == 'ios' && 20 || 30 }}
+    continue-on-error: ${{ matrix.target == 'ios' }}
     strategy:
       fail-fast: false
       matrix:

@@ -3,6 +3,7 @@
 ![GitHub License](https://img.shields.io/github/license/o-murphy/ob-dump)
 ![Pub Version](https://img.shields.io/pub/v/ob_dump_reader?logo=dart)
 
+![Linux] ![Windows] ![macOS] ![iOS] ![Android]
 
 Minimal ObjectBox LMDB reader toolkit for Dart. Its core job: walk a
 `data.mdb` file and hand you each stored object's raw FlatBuffers table
@@ -190,3 +191,11 @@ This approach ensures full licensing integrity: `ob-dump` is an independent soft
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
+
+
+
+[Linux]: https://img.shields.io/badge/Linux-x86__64%20%7C%20arm64-grey?logo=linux&logoColor=black&labelColor=FCC624
+[Windows]: https://img.shields.io/badge/x86__64-grey?logo=windows&logoColor=black&label=Windows&labelColor=0078D4
+[Android]: https://img.shields.io/badge/Android-arm64%20%7C%20armv7%20%7C%20x86__64-grey?logo=android&logoColor=white&labelColor=3DDC84
+[iOS]: https://img.shields.io/badge/iOS-arm64-grey?logo=apple&logoColor=white&labelColor=000000
+[macOS]: https://img.shields.io/badge/macOS-arm64%20%7C%20x86__64-grey?logo=apple&logoColor=white&labelColor=000000

@@ -6,6 +6,7 @@
 ![PyPI Version](https://img.shields.io/pypi/v/ob-dump-reader?logo=pypi)
 ![npm Version](https://img.shields.io/npm/v/ob-dump-reader?logo=npm)
 
+![Linux] ![Windows] ![macOS] ![iOS] ![Android]
 
 Reads an [ObjectBox](https://objectbox.io/) LMDB store (`data.mdb`) directly
 and dumps its contents to JSON — **without linking `objectbox-c`**. Decoding
@@ -132,9 +133,7 @@ its own README and `docs/BACKLOG.md` (phased-plan item 10) for why.
 **Works in Dart and Flutter alike**: `ob_dump_reader` compiles its vendored
 LMDB with a Dart build hook (`dart/hook/build.dart`), so `dart run`,
 `dart test` and `flutter run`/`build`/`test` all just work on
-Android/iOS/Linux/macOS/Windows — one package, nothing to build by hand. (The
-former `ob_dump_reader_flutter` wrapper is discontinued; depend on
-`ob_dump_reader` directly.) CI builds and runs [`dart/example`](dart/example)
+Android/iOS/Linux/macOS/Windows — one package, nothing to build by hand. CI builds and runs [`dart/example`](dart/example)
 on every platform, on an Android emulator and as an offline Flatpak — see
 [`dart/README.md`](dart/README.md#testing).
 
@@ -243,3 +242,10 @@ obligations. This is also compatible with every dependency `ob-dump` pulls in:
 
 None of these are copyleft, so `ob-dump` (and anything embedding it) is free
 to be licensed however its own project requires.
+
+
+[Linux]: https://img.shields.io/badge/Linux-x86__64%20%7C%20arm64-grey?logo=linux&logoColor=black&labelColor=FCC624
+[Windows]: https://img.shields.io/badge/x86__64-grey?logo=windows&logoColor=black&label=Windows&labelColor=0078D4
+[Android]: https://img.shields.io/badge/Android-arm64%20%7C%20armv7%20%7C%20x86__64-grey?logo=android&logoColor=white&labelColor=3DDC84
+[iOS]: https://img.shields.io/badge/iOS-arm64-grey?logo=apple&logoColor=white&labelColor=000000
+[macOS]: https://img.shields.io/badge/macOS-arm64%20%7C%20x86__64-grey?logo=apple&logoColor=white&labelColor=000000
