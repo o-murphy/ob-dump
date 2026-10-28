@@ -1,0 +1,16 @@
+# Not part of the published package. (pub uses this file *instead of*
+# .gitignore, so build output is excluded here as well.)
+.dart_tool/
+build/
+coverage/
+pubspec.lock
+
+# example/ stays (pub.dev shows it); its Flatpak packaging is CI-only.
+example/flatpak/
+example/app/
+example/flutpak.yaml
+example/android/
+example/linux/
+example/windows/
+example/macos/
+example/ios/

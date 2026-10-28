@@ -21,26 +21,49 @@ C++ core either. This is a deliberate toolkit split, not a missing feature:
 see the parent project's [`docs/BACKLOG.md`](../docs/BACKLOG.md#schema-export---schema-and---fbs)
 for the reasoning.
 
-**Using this from a Flutter app?** Depend on
-[`../flutter`](../flutter) (`ob_dump_reader_flutter`) instead of this
-package directly — same API, but it's a real Flutter plugin (`ffiPlugin:
-true`) that compiles and bundles the native LMDB library for you on every
-platform (Android/iOS/Linux/macOS/Windows). This package on its own only
-gives you `dart run ob_dump_reader:build` (see below), which is enough for
-a plain Dart script/CLI but not for a shipped Flutter app.
-
-## Building the native library (plain Dart)
+## Dart and Flutter, one package
 
 ```sh
-dart run ob_dump_reader:build
+dart pub add ob_dump_reader      # or: flutter pub add ob_dump_reader
 ```
 
-Compiles the vendored LMDB source (`src/lmdb/`) into a shared library for
-the current desktop platform, via a plain CMake configure+build — no
-network access, no FetchContent, no prebuilt binary download. Only needed
-if you're using this package directly from a plain Dart project (script,
-CLI, server); `ob_dump_reader_flutter` builds and bundles its own copy
-automatically as part of `flutter build`/`flutter run`.
+The native LMDB library is compiled for you by the package's build hook
+(`hook/build.dart`, `hooks` + `native_toolchain_c`) from the vendored source in
+`src/lmdb/` — no network access, no prebuilt binary, no separate build step.
+It works the same under `dart run`, `dart test`, `flutter run`/`build`/`test`
+and in AOT release builds on Android, iOS, Linux, macOS and Windows (there is
+no web support: LMDB needs a file system). A C compiler is all a build machine
+needs (the Android NDK / Xcode / Visual Studio that Flutter already requires).
+
+**Sandboxed macOS apps:** LMDB synchronises processes with named POSIX
+semaphores on macOS (`sem_open`), which the macOS App Sandbox forbids — opening
+a store fails with `mdb_env_open ...: Operation not permitted`. Apps that read a
+store from inside the sandbox (e.g. Mac App Store builds) have to run without it
+(or use an entitlement that allows it); unsandboxed apps, `dart run` and
+`flutter test` are unaffected. CI runs the macOS example unsandboxed for this
+reason.
+
+If the library cannot be built or loaded, the *build* fails (the hook checks
+what it produced), and reading throws an `LmdbException` that names the
+problem.
+
+> **Migrating from `ob_dump_reader_flutter`** (discontinued): depend on
+> `ob_dump_reader` instead and import `package:ob_dump_reader/ob_dump_reader.dart`.
+> `dart run ob_dump_reader:build` is gone — the build hook replaces it. Requires
+> Dart SDK 3.10+.
+
+## Testing
+
+`dart test` runs the unit tests (and the build hook). CI additionally builds and
+runs [`example/`](example) — a Flutter app that writes an ObjectBox-shaped store
+and reads it back — for Linux, macOS, Windows, Android (also on an emulator) and
+iOS, and as an offline Flatpak (`flatpak.yml`, started by hand); see
+`scripts/ci/flutter-smoke.sh`. To run the Flutter checks locally:
+
+```sh
+cd example && flutter test
+OB_DUMP_EXAMPLE_SELFTEST=1 flutter run -d linux   # headless check, exits 0/1
+```
 
 ## Workflow
 

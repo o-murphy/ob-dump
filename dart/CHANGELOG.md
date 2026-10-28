@@ -8,6 +8,58 @@ Generated from the repo root's `CHANGELOG.md` at publish time — see that
 file if you're reading this in the published package and want the full
 picture across the other packages in this repo too.
 
+## [0.1.0-beta.3] - 2026-10-27
+
+### Changed
+
+- **Breaking:** one package now serves the Dart VM *and* Flutter. The native
+  LMDB library is compiled by a Dart build hook (`hook/build.dart`, `hooks` +
+  `native_toolchain_c`) from the vendored source in `src/lmdb/` into a code
+  asset, so `dart run`, `dart test`, `flutter run`/`build`/`test` and AOT
+  release builds all resolve it the same way on Android, iOS, Linux, macOS and
+  Windows -- nothing is downloaded. The LMDB bindings are now `@Native`
+  (`lib/src/lmdb_bindings.dart`).
+- Requires Dart SDK `^3.10.0` (build hooks / native assets).
+- Reading (`readObjectBoxRecords()`, `readToManyTargets()`) now probes the
+  native library first and throws an `LmdbException` that names the problem
+  ("Could not load the native LMDB library ...") instead of an
+  `ArgumentError` ("Couldn't resolve native function ...") from deep inside
+  the first read.
+
+### Added
+
+- Known limitation (documented in `dart/README.md`): inside the macOS App
+  Sandbox LMDB's named POSIX semaphores are denied, so opening a store fails
+  with "Operation not permitted"; the example is run unsandboxed on macOS in CI.
+- The build hook checks the library it just built, so a bad build fails the
+  **build** instead of the app at startup: the file must exist, export every
+  `mdb_*` function the bindings call (the Windows DLL gets its exports from
+  `src/lmdb_exports_win.c`: MSVC exports nothing by default) and, when the
+  target is the machine doing the build, actually load and answer a call.
+  Android libraries are linked 16 KB page aligned (Google Play requirement).
+- `dart/example`: a small Flutter app that writes an ObjectBox-shaped store and
+  reads it back. CI builds and runs it on every platform and as an offline
+  Flatpak (see the CI entry below).
+- CI: `flutter test` of the example on Linux/macOS/Windows; release builds of
+  the example for Linux, macOS, Windows, Android and iOS, each checking that the
+  library the hook compiled is in the bundle (Android: also 16 KB alignment and
+  no `libc++_shared.so` dependency) and that the built app reads a store and,
+  with the library removed from the bundle, fails fast with a clear error;
+  an Android emulator job that loads the library on a device; a console-app
+  check that reading throws a clear error when `liblmdb` is missing; a
+  `pub publish --dry-run` job; and a manually started **Flatpak** workflow
+  (`flatpak.yml`) that builds the example as an offline Flatpak for x86_64 and
+  aarch64 with [flutpak](https://github.com/o-murphy/flutpak) and runs it inside
+  the sandbox.
+
+### Removed
+
+- `dart run ob_dump_reader:build` (`bin/build.dart`, `tool/build.dart`, the
+  `executables:` entry), the hand-written `DynamicLibrary` loader and its
+  `package_config.json` lookup, and the CMake build of `src/lmdb`: the build
+  hook replaces all of it.
+- Dependency on `path` (no longer used).
+
 ## [0.1.0-beta.2] - 2026-10-27
 
 ### Fixed
@@ -95,6 +147,7 @@ picture across the other packages in this repo too.
   FlatBuffers/schema knowledge; pair with `flatc --dart` output generated
   from `ob_dump --fbs` (see the parent [`ob-dump`](.) project).
 
+[0.1.0-beta.3]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.2...v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.1...v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...v0.1.0-beta.1
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2

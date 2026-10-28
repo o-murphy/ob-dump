@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=ob_dump_reader example
+Comment=Reads an LMDB store with ob_dump_reader
+Exec=ob_dump_example
+Icon=io.github.o_murphy.ob_dump
+Type=Application
+Categories=Utility;

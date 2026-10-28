@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Confirms the C++ core, dart/src/lmdb/, and flutter/src/lmdb/ all agree on
-# the same LMDB release — see LMDB_VERSION at the repo root for why this has
-# to be checked by hand instead of shared via one git submodule (three
-# separately-published/built consumers, no reliable cross-boundary path).
+# Confirms the C++ core and dart/src/lmdb/ agree on the same LMDB release —
+# see LMDB_VERSION at the repo root for why this has to be checked by hand
+# instead of shared via one git submodule (two separately-published/built
+# consumers, no reliable cross-boundary path).
 #
 # Default (no network): reads MDB_VERSION_{MAJOR,MINOR,PATCH} straight out of
 # each vendored lmdb.h and compares against LMDB_VERSION, plus greps the C++
 # core's CMakeLists.txt for the same tag. Cheap enough to run on every push.
 #
 # --full (network required): additionally clones the pinned tag fresh and
-# diffs it byte-for-byte against both vendored copies, to catch someone
+# diffs it byte-for-byte against the vendored copy, to catch someone
 # hand-editing a vendored file without bumping LMDB_VERSION (the macro check
 # alone can't see that). Meant for CI/periodic maintenance, not every push.
 set -euo pipefail
@@ -49,7 +49,6 @@ check_header_version() {
 }
 
 check_header_version "dart/src/lmdb"    dart/src/lmdb/lmdb.h
-check_header_version "flutter/src/lmdb" flutter/src/lmdb/lmdb.h
 
 # C++ core doesn't vendor a copy — it FetchContents the pinned tag fresh at
 # configure time — so just confirm CMakeLists.txt reads the same file rather
@@ -67,7 +66,7 @@ if [ "$full" = 1 ]; then
   trap 'rm -rf "$tmp"' EXIT
   git clone --depth 1 --branch "$pinned" https://github.com/LMDB/lmdb.git "$tmp/lmdb" --quiet
 
-  for dest in dart/src/lmdb flutter/src/lmdb; do
+  for dest in dart/src/lmdb; do
     for f in mdb.c midl.c lmdb.h midl.h; do
       if ! diff -q "$tmp/lmdb/libraries/liblmdb/$f" "$dest/$f" > /dev/null 2>&1; then
         echo "::error::$dest/$f differs from upstream $pinned — hand-edited without bumping LMDB_VERSION?"

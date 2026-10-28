@@ -1,22 +1,20 @@
 # Changelog
 
 All notable changes across the whole `ob-dump` repo (the C++ core, `dart/`,
-`flutter/`, `py/`) are documented in this one file — the single source of
+`py/`, `js/`) are documented in this one file — the single source of
 truth. Each package's own `CHANGELOG.md` (`dart/CHANGELOG.md`,
-`flutter/CHANGELOG.md`, `py/CHANGELOG.md`) is **generated** from this file
+`py/CHANGELOG.md`, `js/CHANGELOG.md`) is **generated** from this file
 by `scripts/ci/sync_changelogs.py` — a physical copy still has to exist in
 each package's own directory because pub.dev refuses to publish a package
 without one, so a purely root-level file can't fully replace them. Those
 generated copies *are* committed (so they're browsable on GitHub/pub.dev
-without needing a build step), but `release.yml`'s `publish-dart`/
-`publish-flutter` jobs still regenerate them fresh right before `pub
+without needing a build step), but `release.yml`'s `publish-dart` job still regenerate them fresh right before `pub
 publish` regardless, as a safety net against a committed copy having
 drifted out of sync with this file. **Edit this file, then run
 `scripts/ci/sync_changelogs.py` and commit the regenerated
-`dart/`/`flutter/`/`py/CHANGELOG.md` alongside your change.**
+`dart/`/`py/`/`js/CHANGELOG.md` alongside your change.**
 
-Note for anyone touching the generation step itself: `dart/.gitignore`/
-`flutter/.gitignore` must never gitignore `CHANGELOG.md` — `pub publish`
+Note for anyone touching the generation step itself: `dart/.gitignore` must never gitignore `CHANGELOG.md` — `pub publish`
 determines package contents via git tracking status and deliberately
 excludes gitignored files even if force-staged (confirmed empirically:
 `git add -f` still triggers a "checked in while gitignored" warning and
@@ -103,6 +101,87 @@ this) to add once that's done.
   explicitly, confirmed against a real such directory (without it, `open()`
   tried to open the directory itself as the data file and failed with
   `EISDIR`).
+
+## [0.1.0-beta.3] - 2026-10-27
+
+### dart/
+
+#### Changed
+
+- **Breaking:** one package now serves the Dart VM *and* Flutter. The native
+  LMDB library is compiled by a Dart build hook (`hook/build.dart`, `hooks` +
+  `native_toolchain_c`) from the vendored source in `src/lmdb/` into a code
+  asset, so `dart run`, `dart test`, `flutter run`/`build`/`test` and AOT
+  release builds all resolve it the same way on Android, iOS, Linux, macOS and
+  Windows -- nothing is downloaded. The LMDB bindings are now `@Native`
+  (`lib/src/lmdb_bindings.dart`).
+- Requires Dart SDK `^3.10.0` (build hooks / native assets).
+- Reading (`readObjectBoxRecords()`, `readToManyTargets()`) now probes the
+  native library first and throws an `LmdbException` that names the problem
+  ("Could not load the native LMDB library ...") instead of an
+  `ArgumentError` ("Couldn't resolve native function ...") from deep inside
+  the first read.
+
+#### Added
+
+- Known limitation (documented in `dart/README.md`): inside the macOS App
+  Sandbox LMDB's named POSIX semaphores are denied, so opening a store fails
+  with "Operation not permitted"; the example is run unsandboxed on macOS in CI.
+- The build hook checks the library it just built, so a bad build fails the
+  **build** instead of the app at startup: the file must exist, export every
+  `mdb_*` function the bindings call (the Windows DLL gets its exports from
+  `src/lmdb_exports_win.c`: MSVC exports nothing by default) and, when the
+  target is the machine doing the build, actually load and answer a call.
+  Android libraries are linked 16 KB page aligned (Google Play requirement).
+- `dart/example`: a small Flutter app that writes an ObjectBox-shaped store and
+  reads it back. CI builds and runs it on every platform and as an offline
+  Flatpak (see the CI entry below).
+- CI: `flutter test` of the example on Linux/macOS/Windows; release builds of
+  the example for Linux, macOS, Windows, Android and iOS, each checking that the
+  library the hook compiled is in the bundle (Android: also 16 KB alignment and
+  no `libc++_shared.so` dependency) and that the built app reads a store and,
+  with the library removed from the bundle, fails fast with a clear error;
+  an Android emulator job that loads the library on a device; a console-app
+  check that reading throws a clear error when `liblmdb` is missing; a
+  `pub publish --dry-run` job; and a manually started **Flatpak** workflow
+  (`flatpak.yml`) that builds the example as an offline Flatpak for x86_64 and
+  aarch64 with [flutpak](https://github.com/o-murphy/flutpak) and runs it inside
+  the sandbox.
+
+#### Removed
+
+- `dart run ob_dump_reader:build` (`bin/build.dart`, `tool/build.dart`, the
+  `executables:` entry), the hand-written `DynamicLibrary` loader and its
+  `package_config.json` lookup, and the CMake build of `src/lmdb`: the build
+  hook replaces all of it.
+- Dependency on `path` (no longer used).
+
+### flutter/
+
+#### Removed
+
+- `ob_dump_reader_flutter` is discontinued: `ob_dump_reader` itself now works
+  in Flutter apps on every platform (see `### dart/` above). Replace the
+  dependency with `ob_dump_reader` and the `ob_dump_reader_flutter` import with
+  `package:ob_dump_reader/ob_dump_reader.dart`. The `flutter/` directory, its
+  per-platform build files and the lockstep version-parity check are gone, and
+  `release.yml` no longer has a `publish-flutter` job.
+
+### py/
+
+#### Changed
+
+- Version bump only — republished in lockstep with `dart` (see the intro
+  above), no functional changes.
+
+### js/
+
+#### Changed
+
+- Version bump only — `js/package.json` is set to the release version in
+  lockstep with `dart`/`py` by `release.yml` (see the intro above); the
+  package is not published to npm yet, so its initial release notes stay under
+  `[Unreleased]` below, no functional changes in this release.
 
 ## [0.1.0-beta.2] - 2026-10-27
 
@@ -368,7 +447,8 @@ to reserve the package names — confirmed live via pub.dev's own API
   properly bundles the native LMDB library on Android/iOS/macOS (see the
   `0.1.0-alpha.2` entry above for why that dependency was since dropped).
 
-[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.2...HEAD
+[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.3...HEAD
+[0.1.0-beta.3]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.2...v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.1...v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-alpha.2...v0.1.0-beta.1
 [0.1.0-alpha.2]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-alpha.2

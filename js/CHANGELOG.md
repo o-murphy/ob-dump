@@ -41,4 +41,14 @@ picture across the other packages in this repo too.
   tried to open the directory itself as the data file and failed with
   `EISDIR`).
 
-[Unreleased]: https://github.com/o-murphy/ob-dump/commits/main/js
+## [0.1.0-beta.3] - 2026-10-27
+
+### Changed
+
+- Version bump only — `js/package.json` is set to the release version in
+  lockstep with `dart`/`py` by `release.yml` (see the intro above); the
+  package is not published to npm yet, so its initial release notes stay under
+  `[Unreleased]` below, no functional changes in this release.
+
+[Unreleased]: https://github.com/o-murphy/ob-dump/compare/v0.1.0-beta.3...HEAD
+[0.1.0-beta.3]: https://github.com/o-murphy/ob-dump/releases/tag/v0.1.0-beta.3

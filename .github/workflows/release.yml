@@ -1,9 +1,9 @@
 name: Release
 
 # Triggered by pushing a tag like v1.2.3 — that one tag drives everything:
-# the C++ core's ob_dump_version(), and both dart/ and flutter/ pubspec
-# versions (which must always match each other — see
-# .github/workflows/version-parity.yml and docs/BACKLOG.md item 18).
+# the C++ core's ob_dump_version(), and the dart/ pubspec version (one
+# package for the Dart VM and Flutter -- its build hook compiles the native
+# library, so there is no separate Flutter package to keep in lockstep).
 on:
   push:
     tags:
@@ -13,7 +13,7 @@ env:
   RELEASE_TAG: ${{ github.ref_name }}
 
 jobs:
-  # Reuses .github/workflows/test.yml's own test-dart/test-py/test-flutter/
+  # Reuses .github/workflows/test.yml's own test-dart/test-py/flutter-smoke/
   # test-js jobs (and its lighter, 3-OS-only build-cpp smoke build) via
   # workflow_call — this job's own build-cpp below is a separate, heavier
   # release-quality build (real per-arch runners, version-stamped, produces
@@ -79,7 +79,7 @@ jobs:
     steps:
       - run: echo "All build/test legs passed."
 
-  # ── 2: bump both pubspecs to the tag's version, commit + push to main ──
+  # ── 2: bump the pubspec and package.json to the tag's version, commit + push to main ──
   bump-versions:
     needs: tests-passed
     runs-on: ubuntu-latest
@@ -105,26 +105,19 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Bump dart/pubspec.yaml, flutter/pubspec.yaml, and js/package.json (lockstep)
+      - name: Bump dart/pubspec.yaml and js/package.json (lockstep)
         run: |
           VERSION="${{ steps.meta.outputs.version }}"
           sed -i "s/^version: .*/version: $VERSION/" dart/pubspec.yaml
-          sed -i "s/^version: .*/version: $VERSION/" flutter/pubspec.yaml
-          # flutter/pubspec.yaml's real dependency constraint on
-          # ob_dump_reader (dependency_overrides handles local/CI dev
-          # separately — see that file) — must stay in lockstep too, same
-          # as the two `version:` fields above.
-          sed -i "s/^  ob_dump_reader: \^.*/  ob_dump_reader: ^$VERSION/" flutter/pubspec.yaml
           sed -i "s/^  \"version\": \".*\"/  \"version\": \"$VERSION\"/" js/package.json
-          grep '^version:' dart/pubspec.yaml flutter/pubspec.yaml
-          grep '^  ob_dump_reader: \^' flutter/pubspec.yaml
+          grep '^version:' dart/pubspec.yaml
           grep '"version":' js/package.json
 
       - name: Commit and push version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add dart/pubspec.yaml flutter/pubspec.yaml js/package.json
+          git add dart/pubspec.yaml js/package.json
           git diff --cached --quiet || git commit -m "chore: bump version to ${{ steps.meta.outputs.version }}"
           git push origin main
 
@@ -225,74 +218,7 @@ jobs:
       - name: Publish to pub.dev
         run: dart pub publish --force
 
-  # ── 8: publish ob_dump_reader_flutter — gated behind manual approval to
-  # give pub.dev's index time to catch up with the dart/ publish above
-  # before this package's dependency on it tries to resolve. ─────────────
-  publish-flutter:
-    # bump-versions listed explicitly (not just publish-dart) because
-    # needs.<job>.outputs is only accessible for *direct* dependencies —
-    # bump-versions is otherwise only a transitive one via publish-dart,
-    # and this job needs its version output below.
-    needs: [publish-dart, bump-versions]
-    runs-on: ubuntu-latest
-    timeout-minutes: 20 # an unexpected interactive auth prompt must fail, not hang
-    environment:
-      pub-publish-flutter # requires a deployment protection rule (wait timer / delay)
-      # configured in this repo's Settings > Environments —
-      # not something a workflow file can set up by itself.
-    permissions:
-      id-token: write # pub.dev OIDC trusted publisher
-    defaults:
-      run:
-        working-directory: flutter
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: main
-
-      # dart-lang/setup-dart is what turns this job's `id-token: write` into a
-      # pub.dev OIDC token that `dart pub publish` picks up (publish-dart gets
-      # it the same way). Without it `pub publish` finds no credentials and
-      # falls back to an interactive Google sign-in, which hangs forever on a
-      # runner. Installed before Flutter, as in dart-bclibc's release.yml.
-      - uses: dart-lang/setup-dart@v1
-
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-
-      # No pubspec.yaml rewrite needed here anymore: bump-versions (above)
-      # already committed a real `ob_dump_reader: ^$VERSION` constraint to
-      # main, and `dependency_overrides` (local-dev-only path dep) doesn't
-      # affect what gets published or what a consumer resolves — see the
-      # comments in flutter/pubspec.yaml itself.
-      - name: flutter pub get
-        run: flutter pub get
-      - name: flutter analyze
-        run: flutter analyze
-
-      # See publish-dart's identical step above for why this has to be
-      # generated (not committed) — same reasoning.
-      - name: Generate CHANGELOG.md
-        working-directory: .
-        run: python3 scripts/ci/sync_changelogs.py flutter
-
-      - name: Make git tree locally clean
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --quiet || git commit -m "ci: local-only commit so pub publish sees a clean tree (never pushed)"
-
-      # `dart pub publish`, not `flutter pub publish`: the OIDC token is
-      # registered for `dart` (see setup-dart above); FLUTTER_ROOT from
-      # flutter-action lets it resolve `flutter: sdk: flutter`.
-      - name: dart pub publish --dry-run
-        run: dart pub publish --dry-run
-      - name: Publish to pub.dev
-        run: dart pub publish --force
-
-  # ── 9: publish ob-dump-reader to PyPI ───────────────────────────────────
+  # ── 8: publish ob-dump-reader to PyPI ───────────────────────────────────
   publish-pypi:
     needs: [bump-versions, create-release]
     runs-on: ubuntu-latest

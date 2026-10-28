@@ -3,7 +3,6 @@
 ![GitHub License](https://img.shields.io/github/license/o-murphy/ob-dump)
 ![GitHub Release](https://img.shields.io/github/v/release/o-murphy/ob-dump?include_prereleases&logo=github)
 ![Dart Pub Version](https://img.shields.io/pub/v/ob_dump_reader?logo=dart)
-![Flutter Pub Version](https://img.shields.io/pub/v/ob_dump_reader_flutter?logo=flutter)
 ![PyPI Version](https://img.shields.io/pypi/v/ob-dump-reader?logo=pypi)
 ![npm Version](https://img.shields.io/npm/v/ob-dump-reader?logo=npm)
 
@@ -130,14 +129,14 @@ if (rc != 0) fprintf(stderr, "error: %s\n", ob_dump_last_error());
 directly from Dart — deliberately *not* an FFI binding to this C++ core. See
 its own README and `docs/BACKLOG.md` (phased-plan item 10) for why.
 
-**Using it from a Flutter app** (not a plain Dart script/CLI)? Depend on
-[`flutter/`](flutter) (`ob_dump_reader_flutter`) instead — same API,
-re-exported unchanged, but it's a real Flutter plugin (`ffiPlugin: true`)
-that compiles and bundles the native LMDB library for you on every platform
-(Android/iOS/Linux/macOS/Windows). `ob_dump_reader`'s own
-`dart run ob_dump_reader:build` only produces a library for the current
-desktop machine, which isn't part of a shipped mobile app. See
-`flutter/README.md` and `docs/BACKLOG.md` (phased-plan items 17 and 22).
+**Works in Dart and Flutter alike**: `ob_dump_reader` compiles its vendored
+LMDB with a Dart build hook (`dart/hook/build.dart`), so `dart run`,
+`dart test` and `flutter run`/`build`/`test` all just work on
+Android/iOS/Linux/macOS/Windows — one package, nothing to build by hand. (The
+former `ob_dump_reader_flutter` wrapper is discontinued; depend on
+`ob_dump_reader` directly.) CI builds and runs [`dart/example`](dart/example)
+on every platform, on an Android emulator and as an offline Flatpak — see
+[`dart/README.md`](dart/README.md#testing).
 
 ## Python
 

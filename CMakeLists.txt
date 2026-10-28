@@ -14,7 +14,7 @@ endif()
 # Overridden by the release workflow (-DOB_DUMP_VERSION=X.Y.Z, derived from
 # the git tag) so ob_dump_version() reports the real release version
 # instead of staying hardcoded forever.
-set(OB_DUMP_VERSION "0.1.0-beta.2" CACHE STRING "ob-dump version string, reported by ob_dump_version()")
+set(OB_DUMP_VERSION "0.1.0-beta.3" CACHE STRING "ob-dump version string, reported by ob_dump_version()")
 
 include(FetchContent)
 
@@ -22,11 +22,10 @@ include(FetchContent)
 # Upstream ships no CMake support; vendor mdb.c/midl.c and build them ourselves.
 # Same "source-buildable, no prebuilt binary" pattern as dart_lmdb2/dart_bclibc.
 #
-# Version pinned once, in LMDB_VERSION at the repo root — dart/src/lmdb/ and
-# flutter/src/lmdb/'s own vendored copies must be bumped to match by hand
-# (they're separately-published pub.dev packages, so they can't share this
-# FetchContent step); scripts/ci/verify-lmdb-vendor.sh checks all three stay
-# in sync.
+# Version pinned once, in LMDB_VERSION at the repo root — dart/src/lmdb/'s
+# own vendored copy must be bumped to match by hand (it's a separately-
+# published pub.dev package, so it can't share this FetchContent step);
+# scripts/ci/verify-lmdb-vendor.sh checks both stay in sync.
 #
 # Must be a release tag (LMDB_MAJOR.MINOR.PATCH, e.g. LMDB_0.9.31) — never a
 # branch. Upstream (https://github.com/LMDB/lmdb) uses OpenLDAP's
