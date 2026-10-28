@@ -198,7 +198,7 @@ jobs:
           ref: main
 
       - uses: dart-lang/setup-dart@v1
-      - run: dart pub get
+      - run: dart pub get --no-example
 
       # pub.dev refuses to publish a package without its own CHANGELOG.md —
       # generated fresh from the repo root's CHANGELOG.md, in this ephemeral
