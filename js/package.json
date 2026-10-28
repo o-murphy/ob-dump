@@ -42,7 +42,7 @@
   },
   "dependencies": {
     "flatbuffers": "^25.2.10",
-    "lmdb": "^3.5.8"
+    "lmdb": "^3.5.9"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
