@@ -69,6 +69,21 @@ this) to add once that's done.
 
 ## [Unreleased]
 
+### dart/
+
+#### Fixed
+
+- `release.yml`'s `publish-dart` job now resolves with
+  `dart pub get --no-example` — the Flutter-only `example/` app can't be
+  resolved by plain `dart pub get`, which broke the publish step.
+
+### core
+
+#### Changed
+
+- CI: the flaky iOS smoke-test leg is now non-gating and capped at 20 min.
+- Flatpak CI/example bumped to Flutter 3.47.9 and `flutpak` v0.8.7.
+
 ### js/
 
 #### Added
