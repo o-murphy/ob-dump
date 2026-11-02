@@ -61,14 +61,9 @@ case "$TARGET" in
   linux)
     flutter build linux --release
     have "liblmdb.so in the bundle" find build/linux -name 'liblmdb.so'
-    BUNDLE="$(cd "$(dirname "$(find build/linux -type f -name ob_dump_example | head -1)")" && pwd)"
-    # Diagnostics for "FlutterEngineCreateAOTData: Invalid ELF path" on ubuntu-26.04.
-    echo "--- diag: bundle ---"; ls -lR "$BUNDLE" || true
-    file "$BUNDLE/lib/libapp.so" || true
-    cmake --version | head -1 || true
-    lsb_release -ds 2>/dev/null || true; uname -r
-    mount | grep -E " $(df --output=target "$BUNDLE" | tail -1) " || true
-    echo "--- end diag ---"
+    # Only the bundle/ copy: build/linux/*/release/intermediates_do_not_run/ has an exe
+    # too (no lib/), and which one `find` lists first depends on the filesystem.
+    BUNDLE="$(cd "$(dirname "$(find build/linux -type f -path '*/bundle/ob_dump_example' | head -1)")" && pwd)"
     selftest ok "$BUNDLE/ob_dump_example"
     rm -f "$BUNDLE"/lib/liblmdb.so
     selftest fail "$BUNDLE/ob_dump_example"
