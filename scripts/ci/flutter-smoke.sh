@@ -61,7 +61,7 @@ case "$TARGET" in
   linux)
     flutter build linux --release
     have "liblmdb.so in the bundle" find build/linux -name 'liblmdb.so'
-    BUNDLE="$(dirname "$(find build/linux -type f -name ob_dump_example | head -1)")"
+    BUNDLE="$(cd "$(dirname "$(find build/linux -type f -name ob_dump_example | head -1)")" && pwd)"
     selftest ok "$BUNDLE/ob_dump_example"
     rm -f "$BUNDLE"/lib/liblmdb.so
     selftest fail "$BUNDLE/ob_dump_example"
