@@ -82,7 +82,7 @@ this) to add once that's done.
 #### Changed
 
 - CI: the flaky iOS smoke-test leg is now non-gating and capped at 20 min.
-- Flatpak CI/example bumped to Flutter 3.47.9 and `flutpak` v0.8.7.
+- Flatpak CI/example bumped to Flutter 3.50.0 and `flutpak` v0.9.0.
 
 ### js/
 
